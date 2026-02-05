@@ -45,20 +45,22 @@
     ;; Parse intent clauses
     (multiple-value-bind (intent-plist remaining-body)
         (parse-intent-clauses body)
-      (let ((intent-form (when intent-plist
-                           `(setf (get ',name 'telos:intent)
-                                  (make-intent
-                                   ,@(loop for (k v) on intent-plist by #'cddr
-                                           collect k
-                                           collect (if (member k '(:role :purpose))
-                                                       v
-                                                       `',v)))))))
+      (let* ((feature (getf intent-plist :belongs-to))
+             (intent-form (when intent-plist
+                            `(setf (get ',name 'telos:intent)
+                                   (make-intent
+                                    ,@(loop for (k v) on intent-plist by #'cddr
+                                            collect k
+                                            collect (if (member k '(:role :purpose))
+                                                        v
+                                                        `',v)))))))
         `(progn
            (defun ,name ,lambda-list
              ,@(when docstring (list docstring))
              ,@declarations
              ,@remaining-body)
            ,@(when intent-form (list intent-form))
+           ,@(when feature `((register-member ',feature ',name :function)))
            ',name)))))
 
 (defmacro defintent (name &key feature role purpose failure-modes
@@ -70,17 +72,19 @@
    ROLE - role within the feature
    PURPOSE - why this exists
    Other fields same as deffeature."
-  `(progn
-     (setf (get ',name 'telos:intent)
-           (make-intent :belongs-to ',feature
-                        :role ,role
-                        :purpose ,purpose
-                        :failure-modes ',failure-modes
-                        :goals ',goals
-                        :constraints ',constraints
-                        :assumptions ',assumptions
-                        :verification ',verification))
-     ',name))
+  (let ((member-type (if (find-class name nil) :class :function)))
+    `(progn
+       (setf (get ',name 'telos:intent)
+             (make-intent :belongs-to ',feature
+                          :role ,role
+                          :purpose ,purpose
+                          :failure-modes ',failure-modes
+                          :goals ',goals
+                          :constraints ',constraints
+                          :assumptions ',assumptions
+                          :verification ',verification))
+       ,@(when feature `((register-member ',feature ',name ,member-type)))
+       ',name)))
 
 (defun get-intent (name)
   "Get intent for a function or class.

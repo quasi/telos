@@ -45,12 +45,13 @@
    - (:verification ((id \"desc\") ...))"
   (multiple-value-bind (intent-plist remaining-options)
       (parse-class-intent-options options)
-    (let ((intent-form `(make-intent
-                         ,@(loop for (k v) on intent-plist by #'cddr
-                                 collect k
-                                 collect (if (member k '(:role :purpose))
-                                             v
-                                             `',v)))))
+    (let* ((feature (getf intent-plist :belongs-to))
+           (intent-form `(make-intent
+                          ,@(loop for (k v) on intent-plist by #'cddr
+                                  collect k
+                                  collect (if (member k '(:role :purpose))
+                                              v
+                                              `',v)))))
       `(progn
          (defclass ,name ,superclasses
            ,slots
@@ -58,4 +59,5 @@
            ,@remaining-options)
          ;; Set intent after class is created (defclass doesn't eval option values)
          (setf (class-intent (find-class ',name)) ,intent-form)
+         ,@(when feature `((register-member ',feature ',name :class)))
          (find-class ',name)))))
