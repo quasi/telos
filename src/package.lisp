@@ -18,6 +18,7 @@
    #:deffeature
    #:defun/i
    #:defclass/i
+   #:defstruct/i
    #:defintent
 
    ;; Query API

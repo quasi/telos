@@ -15,6 +15,7 @@
      (:file "feature")
      (:file "function")
      (:file "class")
+     (:file "struct")
      (:file "query"))))
   :in-order-to ((test-op (test-op "telos/tests"))))
 
@@ -30,6 +31,7 @@
      (:file "feature-test")
      (:file "function-test")
      (:file "class-test")
+     (:file "struct-test")
      (:file "query-test"))))
   :perform (test-op (o s)
              (uiop:symbol-call :fiveam :run! :telos-tests)))
