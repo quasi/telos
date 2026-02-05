@@ -19,6 +19,7 @@
    #:defun/i
    #:defclass/i
    #:defstruct/i
+   #:define-condition/i
    #:defintent
 
    ;; Query API

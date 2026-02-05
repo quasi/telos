@@ -16,6 +16,7 @@
      (:file "function")
      (:file "class")
      (:file "struct")
+     (:file "condition")
      (:file "query"))))
   :in-order-to ((test-op (test-op "telos/tests"))))
 
@@ -32,6 +33,7 @@
      (:file "function-test")
      (:file "class-test")
      (:file "struct-test")
+     (:file "condition-test")
      (:file "query-test"))))
   :perform (test-op (o s)
              (uiop:symbol-call :fiveam :run! :telos-tests)))
