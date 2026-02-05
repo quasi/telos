@@ -12,7 +12,7 @@ Telos is a Common Lisp library for **intent introspection**—capturing the *why
 ;; Load the system
 (asdf:load-system :telos)
 
-;; Run all tests (89 tests across 5 suites)
+;; Run all tests
 (asdf:test-system :telos)
 
 ;; Or from shell
@@ -23,6 +23,9 @@ sbcl --eval "(asdf:test-system :telos)" --quit
 (5am:run! :feature-tests)    ; Feature definition/hierarchy tests
 (5am:run! :function-tests)   ; defun/i, defintent tests
 (5am:run! :class-tests)      ; defclass/i, metaclass tests
+(5am:run! :struct-tests)     ; defstruct/i tests
+(5am:run! :condition-tests)  ; define-condition/i tests
+(5am:run! :method-tests)     ; Method specializer tests
 (5am:run! :query-tests)      ; intent-chain, feature-members tests
 ```
 
@@ -53,14 +56,17 @@ The `intent` struct is the foundational data type:
 |--------|-----------------|
 | Features | `*feature-registry*` hash table |
 | Function intent | Symbol plist: `(get 'fn-name 'telos:intent)` |
+| Struct intent | Symbol plist: `(get 'struct-name 'telos:intent)` |
+| Condition intent | Symbol plist: `(get 'condition-name 'telos:intent)` |
 | Class intent (defclass/i) | Metaclass slot via `class-intent` accessor |
 | Class intent (retrofitted) | `*class-intent-registry*` hash table |
+| Method intent | `*method-intent-registry*` hash table (keyed by specializer list) |
 | Feature members | `*feature-members*` hash table |
 
 ### Module Dependencies
 
 ```
-package.lisp → intent.lisp → storage.lisp → feature.lisp → function.lisp → class.lisp → query.lisp
+package.lisp → intent.lisp → storage.lisp → feature.lisp → function.lisp → class.lisp → struct.lisp → condition.lisp → query.lisp
 ```
 
 All modules load serially via ASDF.
@@ -70,15 +76,19 @@ All modules load serially via ASDF.
 - `deffeature` — Define a feature with intent (registers in `*feature-registry*`)
 - `defun/i` — Define a function with embedded intent clauses
 - `defclass/i` — Define a class with intent via `intentful-class` metaclass
-- `defintent` — Retrofit intent onto existing functions/classes
+- `defstruct/i` — Define a struct with embedded intent clauses
+- `define-condition/i` — Define a condition with embedded intent clauses
+- `defintent` — Retrofit intent onto existing functions/classes/methods
 
 ### Query API
 
 - `intent-chain(name)` — Trace from function/class up to root feature
-- `feature-members(name &optional type)` — Get functions, classes, sub-features
-- `get-intent(name)` — Get intent for any function or class
+- `feature-members(name &optional type)` — Get functions, classes, structs, conditions, methods, sub-features
+- `get-intent(name)` — Get intent for function, class, or method (accepts symbol or specializer list)
+- `method-intent(spec)` — Get intent for method specialization
 - `feature-intent(name)` — Get intent for a feature
 - `intent-feature(name)` — Quick lookup of which feature something belongs to
+- `class-intent(name)` — Get intent for class (accepts symbol or class object)
 
 ## Conventions
 
@@ -112,6 +122,22 @@ Features form a tree via `:belongs-to`:
 - Failure mode IDs: keywords (`:timing-attack`, `:lockout`)
 - Goal IDs: keywords (`:secure`, `:usable`)
 
+### Method Specializers
+
+For method intent, use a list with the generic function name and specializers:
+
+```lisp
+;; EQL specializer
+(defintent (consolidate (eql :average))
+  :feature consolidation
+  :role "Compute mean for time-averaged metrics")
+
+;; Class specializer
+(defintent (backend-store memory-backend)
+  :feature storage
+  :role "Store in-memory hash table")
+```
+
 ## Test Structure
 
 Test package: `:telos/tests`
@@ -119,12 +145,15 @@ Root suite: `:telos-tests`
 
 ```
 tests/
-├── package.lisp      (defines test package, root suite)
-├── intent-test.lisp  (intent struct creation/access)
-├── feature-test.lisp (deffeature, hierarchy, list-features)
+├── package.lisp       (defines test package, root suite)
+├── intent-test.lisp   (intent struct creation/access)
+├── feature-test.lisp  (deffeature, hierarchy, list-features)
 ├── function-test.lisp (defun/i, defintent, intent retrieval)
-├── class-test.lisp   (defclass/i, intentful-class metaclass)
-└── query-test.lisp   (intent-chain, feature-members)
+├── class-test.lisp    (defclass/i, intentful-class metaclass)
+├── struct-test.lisp   (defstruct/i tests)
+├── condition-test.lisp (define-condition/i tests)
+├── method-test.lisp   (method specializer tests)
+└── query-test.lisp    (intent-chain, feature-members)
 ```
 
 ## TDD Workflow
