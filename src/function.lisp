@@ -84,8 +84,11 @@
 
 (defun get-intent (name)
   "Get intent for a function or class.
-   Checks symbol plist first, then class registry."
+   Checks: 1) symbol plist, 2) intentful-class metaclass, 3) class registry."
   (or (get name 'telos:intent)
+      (let ((class (find-class name nil)))
+        (when (and class (typep class 'intentful-class))
+          (class-intent class)))
       (gethash name *class-intent-registry*)))
 
 (defun intent-feature (name)
