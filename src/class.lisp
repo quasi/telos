@@ -13,6 +13,12 @@
                                        (superclass standard-class))
   t)
 
+(defmethod class-intent ((name symbol))
+  "Get intent for a class by name (symbol convenience method)."
+  (let ((class (find-class name nil)))
+    (when (and class (typep class 'intentful-class))
+      (slot-value class 'intent))))
+
 (defun parse-class-intent-options (options)
   "Extract intent-related options from defclass options.
    Returns (values intent-plist remaining-options)."

@@ -75,3 +75,21 @@
     ()
     (:feature my-class-feature))
   (is (eq 'my-class-feature (intent-feature 'featured-class))))
+
+;;; class-intent symbol convenience
+
+(test class-intent-accepts-symbol
+  "class-intent can be called with a symbol instead of class object"
+  (defclass/i symbol-convenience-class ()
+    ()
+    (:feature symbol-test-feature)
+    (:purpose "Test symbol convenience"))
+  ;; Should work with symbol directly
+  (let ((intent (class-intent 'symbol-convenience-class)))
+    (is (not (null intent)))
+    (is (string= "Test symbol convenience" (intent-purpose intent))))
+  ;; Should return nil for non-existent class
+  (is (null (class-intent 'nonexistent-class-12345)))
+  ;; Should return nil for non-intentful class
+  (defclass plain-class-for-test () ())
+  (is (null (class-intent 'plain-class-for-test))))
