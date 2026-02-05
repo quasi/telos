@@ -24,6 +24,7 @@
 
    ;; Query API
    #:get-intent
+   #:method-intent
    #:feature-intent
    #:feature-members
    #:feature-parent

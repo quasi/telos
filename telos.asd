@@ -34,6 +34,7 @@
      (:file "class-test")
      (:file "struct-test")
      (:file "condition-test")
+     (:file "method-test")
      (:file "query-test"))))
   :perform (test-op (o s)
              (uiop:symbol-call :fiveam :run! :telos-tests)))

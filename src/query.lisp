@@ -5,20 +5,21 @@
 
 ;;; Track members of features (populated by defun/i, defclass/i, defstruct/i, define-condition/i, defintent)
 (defvar *feature-members* (make-hash-table :test 'eq)
-  "Maps feature-name to (:functions (list) :classes (list) :structs (list) :conditions (list))")
+  "Maps feature-name to (:functions (list) :classes (list) :structs (list) :conditions (list) :methods (list))")
 
 (defun register-member (feature-name name type)
-  "Register NAME as a member of FEATURE-NAME with TYPE (:function, :class, :struct, or :condition)"
+  "Register NAME as a member of FEATURE-NAME with TYPE (:function, :class, :struct, :condition, or :method)"
   (when feature-name
     (let ((members (gethash feature-name *feature-members*)))
       (unless members
-        (setf members (list :functions nil :classes nil :structs nil :conditions nil))
+        (setf members (list :functions nil :classes nil :structs nil :conditions nil :methods nil))
         (setf (gethash feature-name *feature-members*) members))
       (case type
         (:function (pushnew name (getf members :functions)))
         (:class (pushnew name (getf members :classes)))
         (:struct (pushnew name (getf members :structs)))
-        (:condition (pushnew name (getf members :conditions)))))))
+        (:condition (pushnew name (getf members :conditions)))
+        (:method (pushnew name (getf members :methods) :test #'equal))))))
 
 (defun intent-chain (name)
   "Get full intent chain from function/class up to root feature.
@@ -48,7 +49,7 @@
         (nreverse chain)))))
 
 (defun feature-members (feature-name &optional type-filter)
-  "Get members (functions, classes, structs, conditions, sub-features) of a feature.
+  "Get members (functions, classes, structs, conditions, methods, sub-features) of a feature.
 
    TYPE-FILTER can be:
    - nil: return plist with all member types
@@ -56,21 +57,25 @@
    - :classes: return just the class list
    - :structs: return just the struct list
    - :conditions: return just the condition list
+   - :methods: return just the method list (specializer specs)
    - :features: return just the sub-feature list"
   (let* ((members (gethash feature-name *feature-members*))
          (functions (getf members :functions))
          (classes (getf members :classes))
          (structs (getf members :structs))
          (conditions (getf members :conditions))
+         (methods (getf members :methods))
          (sub-features (feature-children feature-name)))
     (case type-filter
       (:functions functions)
       (:classes classes)
       (:structs structs)
       (:conditions conditions)
+      (:methods methods)
       (:features sub-features)
       (otherwise (list :functions functions
                        :classes classes
                        :structs structs
                        :conditions conditions
+                       :methods methods
                        :features sub-features)))))

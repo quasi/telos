@@ -11,6 +11,10 @@
 (defvar *class-intent-registry* (make-hash-table :test 'eq)
   "Maps class-name (symbol) to intent struct. Used for retrofitted classes.")
 
+;;; Method intent registry (for method specializers)
+(defvar *method-intent-registry* (make-hash-table :test 'equal)
+  "Maps method-spec (list) to intent struct. Key is (generic-name . specializers).")
+
 ;;; Feature storage
 (defun register-feature (name intent)
   "Register a feature with its intent"
