@@ -89,6 +89,63 @@ Telos makes intent introspectable:
 - `define-condition/i` — Define conditions with embedded intent
 - `defintent` — Retrofit intent onto existing functions, classes, or methods
 - Query API — `intent-chain`, `feature-members`, `get-intent`, `method-intent`, and more
+- **MCP Integration** — Query intent directly from Claude Code (see below)
+
+## MCP Integration: Query Intent from Claude Code
+
+Telos integrates with [cl-mcp-server](https://github.com/quasi/cl-mcp-server) to make intent introspection available directly in Claude Code sessions.
+
+### Setup
+
+Install and configure cl-mcp-server following its [installation instructions](https://github.com/quasi/cl-mcp-server#installation). Once configured, load telos in your REPL session:
+
+```lisp
+(ql:quickload :telos)
+```
+
+### Available Tools
+
+Claude Code gets 5 telos-specific tools:
+
+| Tool | Purpose |
+|------|---------|
+| `telos-list-features` | List all features with their purpose and hierarchy |
+| `telos-feature-intent` | Get complete intent for a feature (goals, constraints, failure modes) |
+| `telos-get-intent` | Get intent for a specific function, class, or condition |
+| `telos-intent-chain` | Trace intent from symbol up to root feature |
+| `telos-feature-members` | List all code belonging to a feature |
+
+### Example Workflow
+
+```
+User: What features are defined in this codebase?
+Claude: [uses telos-list-features]
+
+        Features (3):
+
+        user-authentication
+          Purpose: Verify user identity before granting access
+          Parent: security
+
+        rate-limiting
+          Purpose: Prevent resource exhaustion
+          Parent: security
+
+User: Why does the verify-credentials function exist?
+Claude: [uses telos-intent-chain]
+
+        Intent Chain (2 levels):
+
+        1. [function] verify-credentials
+           Role: Validate username/password pair
+           Failure modes: timing-attack
+
+        2. [feature] user-authentication
+           Purpose: Verify user identity before granting access
+           Failure modes: lockout, breach
+```
+
+This integration enables Claude to reason about **why** code exists, not just **what** it does—making intent a first-class part of AI-assisted development.
 
 ## Documentation
 
