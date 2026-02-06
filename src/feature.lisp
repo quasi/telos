@@ -4,7 +4,8 @@
 ;;; Macros and functions for defining and querying features
 
 (defmacro deffeature (name &key purpose goals constraints assumptions
-                               failure-modes verification belongs-to)
+                               failure-modes verification belongs-to
+                               decisions)
   "Define a feature with its intent.
 
    NAME - symbol naming the feature
@@ -14,16 +15,28 @@
    ASSUMPTIONS - list of (:id \"description\") for world assumptions
    FAILURE-MODES - list of (:id \"description\" :violates :goal-id)
    VERIFICATION - list of (:id \"description\")
-   BELONGS-TO - parent feature symbol"
-  `(register-feature
-    ',name
-    (make-intent :purpose ,purpose
-                 :goals ',goals
-                 :constraints ',constraints
-                 :assumptions ',assumptions
-                 :failure-modes ',failure-modes
-                 :verification ',verification
-                 :belongs-to ',belongs-to)))
+   BELONGS-TO - parent feature symbol
+   DECISIONS - list of decision plists (:id :chose :over :because :date :decided-by)"
+  `(progn
+     (register-feature
+      ',name
+      (make-intent :purpose ,purpose
+                   :goals ',goals
+                   :constraints ',constraints
+                   :assumptions ',assumptions
+                   :failure-modes ',failure-modes
+                   :verification ',verification
+                   :belongs-to ',belongs-to))
+     ,@(when decisions
+         (loop for dec in decisions
+               collect `(record-decision ',name
+                          :id ,(getf dec :id)
+                          :chose ,(getf dec :chose)
+                          :over ',(getf dec :over)
+                          :because ,(getf dec :because)
+                          :date ,(getf dec :date)
+                          :decided-by ,(getf dec :decided-by))))
+     ',name))
 
 (defun feature-parent (name)
   "Get the parent feature of NAME, or nil if no parent"

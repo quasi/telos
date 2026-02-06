@@ -39,6 +39,7 @@
 
 (test record-decision-stores
   "record-decision stores a decision retrievable via feature-decisions"
+  (remhash 'rd-test-feature telos::*decision-registry*)
   (record-decision 'rd-test-feature
     :id :choice-1 :chose "A" :because "Simplest")
   (let ((decisions (feature-decisions 'rd-test-feature)))
@@ -47,6 +48,7 @@
 
 (test record-decision-accumulates
   "multiple record-decision calls accumulate (most recent first)"
+  (remhash 'rd-accum-feature telos::*decision-registry*)
   (record-decision 'rd-accum-feature
     :id :first :chose "X")
   (record-decision 'rd-accum-feature
@@ -69,3 +71,56 @@
 (test feature-decisions-nil-for-unknown
   "feature-decisions returns nil for unknown feature"
   (is (null (feature-decisions 'completely-unknown-feature-xyz))))
+
+;;; deffeature :decisions integration tests
+
+(test deffeature-with-inline-decisions
+  "deffeature :decisions clause records decisions and intent still works"
+  (remhash 'df-dec-test-1 telos::*decision-registry*)
+  (deffeature df-dec-test-1
+    :purpose "Feature with a decision"
+    :decisions ((:id :lang-choice
+                 :chose "Common Lisp"
+                 :over ("Python" "Rust")
+                 :because "Superior for this domain"
+                 :date "2026-02-06"
+                 :decided-by "Baba")))
+  ;; Intent works
+  (let ((intent (feature-intent 'df-dec-test-1)))
+    (is (not (null intent)))
+    (is (string= "Feature with a decision" (intent-purpose intent))))
+  ;; Decision recorded
+  (let ((decisions (feature-decisions 'df-dec-test-1)))
+    (is (= 1 (length decisions)))
+    (is (eq :lang-choice (decision-id (first decisions))))
+    (is (string= "Common Lisp" (decision-chose (first decisions))))
+    (is (equal '("Python" "Rust") (decision-over (first decisions))))))
+
+(test deffeature-multiple-decisions
+  "deffeature with multiple decisions in one form"
+  (remhash 'df-dec-test-2 telos::*decision-registry*)
+  (deffeature df-dec-test-2
+    :purpose "Feature with multiple decisions"
+    :decisions ((:id :db :chose "SQLite" :because "Embedded")
+                (:id :format :chose "JSON" :because "Universal")))
+  (let ((decisions (feature-decisions 'df-dec-test-2)))
+    (is (= 2 (length decisions)))))
+
+(test deffeature-without-decisions-unchanged
+  "deffeature without :decisions works exactly as before"
+  (deffeature df-dec-test-3
+    :purpose "No decisions here"
+    :goals ((:g1 "A goal")))
+  (let ((intent (feature-intent 'df-dec-test-3)))
+    (is (not (null intent)))
+    (is (string= "No decisions here" (intent-purpose intent)))
+    (is (= 1 (length (intent-goals intent)))))
+  (is (null (feature-decisions 'df-dec-test-3))))
+
+(test deffeature-returns-name-with-decisions
+  "deffeature still returns the feature name symbol when :decisions present"
+  (remhash 'df-dec-test-4 telos::*decision-registry*)
+  (is (eq 'df-dec-test-4
+          (deffeature df-dec-test-4
+            :purpose "Return value test"
+            :decisions ((:id :x :chose "Y"))))))
