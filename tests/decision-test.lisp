@@ -124,3 +124,30 @@
           (deffeature df-dec-test-4
             :purpose "Return value test"
             :decisions ((:id :x :chose "Y"))))))
+
+;;; list-decisions tests
+
+(test list-decisions-specific-feature
+  "list-decisions with feature-name returns that feature's decisions"
+  (remhash 'ld-specific telos::*decision-registry*)
+  (record-decision 'ld-specific :id :a :chose "A")
+  (record-decision 'ld-specific :id :b :chose "B")
+  (let ((result (list-decisions 'ld-specific)))
+    (is (= 2 (length result)))
+    (is (eq :b (decision-id (first result))))))
+
+(test list-decisions-all
+  "list-decisions without arg returns alist of all features with decisions"
+  (remhash 'ld-all-1 telos::*decision-registry*)
+  (remhash 'ld-all-2 telos::*decision-registry*)
+  (record-decision 'ld-all-1 :id :x :chose "X")
+  (record-decision 'ld-all-2 :id :y :chose "Y")
+  (let ((result (list-decisions)))
+    ;; result is an alist of (feature-name . decisions)
+    (is (listp result))
+    (let ((entry-1 (assoc 'ld-all-1 result))
+          (entry-2 (assoc 'ld-all-2 result)))
+      (is (not (null entry-1)))
+      (is (not (null entry-2)))
+      (is (= 1 (length (cdr entry-1))))
+      (is (= 1 (length (cdr entry-2)))))))

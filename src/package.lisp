@@ -44,6 +44,7 @@
    #:intent-feature
    #:intent-chain
    #:list-features
+   #:list-decisions
 
    ;; Metaclass
    #:intentful-class

@@ -79,3 +79,12 @@
                        :conditions conditions
                        :methods methods
                        :features sub-features)))))
+
+(defun list-decisions (&optional feature-name)
+  "List decisions. With FEATURE-NAME, return that feature's decisions.
+   Without, return alist of (feature-name . decisions) for all features with decisions."
+  (if feature-name
+      (feature-decisions feature-name)
+      (loop for name being the hash-keys of *decision-registry*
+            for decisions = (gethash name *decision-registry*)
+            when decisions collect (cons name decisions))))
