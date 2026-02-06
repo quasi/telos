@@ -80,6 +80,37 @@ Telos makes intent introspectable:
 ;; => user-authentication
 ```
 
+### Track Decisions
+
+```lisp
+;; Inline with feature definition
+(deffeature user-authentication
+  :purpose "Verify user identity before granting access"
+  :decisions ((:id :auth-method
+               :chose "bcrypt"
+               :over ("argon2" "scrypt")
+               :because "Widest library support, proven in production"
+               :date "2026-02-06"
+               :decided-by "quasi")))
+
+;; Or record decisions later as they happen
+(record-decision 'user-authentication
+  :id :session-store
+  :chose "signed cookies"
+  :over ("server-side sessions" "JWT")
+  :because "Stateless, no shared storage needed")
+
+;; Query decisions
+(feature-decisions 'user-authentication)
+;; => (#S(DECISION :ID :SESSION-STORE :CHOSE "signed cookies" ...)
+;;     #S(DECISION :ID :AUTH-METHOD :CHOSE "bcrypt" ...))
+
+;; List all decisions across features
+(list-decisions)
+;; => ((USER-AUTHENTICATION . (#S(DECISION ...) #S(DECISION ...)))
+;;     (RATE-LIMITING . (#S(DECISION ...))))
+```
+
 ## What You Get
 
 - `deffeature` — Define features with purpose, goals, constraints, and failure modes
@@ -88,6 +119,7 @@ Telos makes intent introspectable:
 - `defstruct/i` — Define structs with embedded intent
 - `define-condition/i` — Define conditions with embedded intent
 - `defintent` — Retrofit intent onto existing functions, classes, or methods
+- Decision tracking — `record-decision`, `feature-decisions`, `list-decisions`
 - Query API — `intent-chain`, `feature-members`, `get-intent`, `method-intent`, and more
 - **MCP Integration** — Query intent directly from Claude Code (see below)
 
