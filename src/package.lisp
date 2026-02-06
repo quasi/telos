@@ -22,6 +22,18 @@
    #:define-condition/i
    #:defintent
 
+   ;; Decision tracking
+   #:decision
+   #:make-decision
+   #:decision-id
+   #:decision-chose
+   #:decision-over
+   #:decision-because
+   #:decision-date
+   #:decision-decided-by
+   #:record-decision
+   #:feature-decisions
+
    ;; Query API
    #:get-intent
    #:method-intent
