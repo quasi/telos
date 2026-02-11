@@ -24,14 +24,39 @@ Telos makes intent introspectable:
 
 ## Quickstart
 
+### Requirements
+- Any ANSI compliant Lisp implementation (I recommend SBCL, get it at sbcl.org)
+- Having quicklisp installed (Follow the instructions at quicklisp.org/beta/)
+
 ### Install
 
 ```lisp
+
 ;; Load via Quicklisp (when available)
 (ql:quickload :telos)
+;; Install the dependency
+(ql:quickload "closer-mop")
 
-;; Or load from local directory
-(asdf:load-system :telos)
+;; To load from local directory (Insert in your REPL)
+;; 1. Load Quicklisp (if you have it installed)
+(load "~/quicklisp/setup.lisp")
+
+;; 2. ASDF is usually already loaded in modern Common Lisp
+;;    but we ensure it's available
+(require 'asdf)
+
+;; 3. Define the path to telos - ADJUST THIS TO YOUR ACTUAL PATH
+;;    For Windows users: Use forward slashes or double backslashes
+(defparameter *telos-dir* (truename "C:/your/actual/path/to/telos/"))
+
+;; 4. Add the directory to your central registry
+(pushnew *telos-dir* asdf:*central-registry*)
+
+;; 5. Install telos dependency (closer-mop)
+(ql:quickload "closer-mop")
+
+;; 6. Finally load the system
+(asdf:load-system "telos")
 ```
 
 ### Define a Feature
