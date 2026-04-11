@@ -74,7 +74,7 @@ Core data structure representing intent at any level (feature, function, class).
 
 ```lisp
 (deffeature name &key purpose goals constraints assumptions
-                      failure-modes verification belongs-to)
+                      failure-modes verification belongs-to decisions)
 ```
 
 **Purpose**: Define a feature with structured intent.
@@ -89,6 +89,7 @@ Core data structure representing intent at any level (feature, function, class).
 - `failure-modes` — List of `(:id "description" :violates :goal-id)` for failure scenarios
 - `verification` — List of `(:id "description")` for verification methods
 - `belongs-to` — Parent feature symbol (optional, creates hierarchy)
+- `decisions` — List of decision plists inline (see `record-decision` for the full schema)
 
 **Returns**: `name`
 

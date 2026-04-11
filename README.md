@@ -162,7 +162,7 @@ Install and configure cl-mcp-server following its [installation instructions](ht
 
 ### Available Tools
 
-Claude Code gets 5 telos-specific tools:
+Claude Code gets 7 telos-specific tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -171,6 +171,8 @@ Claude Code gets 5 telos-specific tools:
 | `telos-get-intent` | Get intent for a specific function, class, or condition |
 | `telos-intent-chain` | Trace intent from symbol up to root feature |
 | `telos-feature-members` | List all code belonging to a feature |
+| `telos-feature-decisions` | Get all decisions recorded for a feature |
+| `telos-list-decisions` | List all decisions across all features |
 
 ### Example Workflow
 

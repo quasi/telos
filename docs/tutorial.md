@@ -140,7 +140,7 @@ Rate limiters refill tokens over time. Add a replenishment function:
 
 ```lisp
 (feature-members 'token-bucket)
-;; => (:FUNCTIONS (CHECK-RATE-LIMIT REPLENISH-TOKENS) :CLASSES NIL :FEATURES NIL)
+;; => (:FUNCTIONS (CHECK-RATE-LIMIT REPLENISH-TOKENS) :CLASSES NIL :STRUCTS NIL :CONDITIONS NIL :METHODS NIL :FEATURES NIL)
 
 ;; Get only functions
 (feature-members 'token-bucket :functions)
