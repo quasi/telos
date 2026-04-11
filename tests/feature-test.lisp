@@ -58,6 +58,15 @@
   (let ((features (list-features "abuse")))
     (is (member 'abuse-protection features))))
 
+(test list-features-accepts-keyword-filtering
+  "list-features accepts keyword-style calls"
+  (deffeature lf-parent-feature :purpose "Parent feature")
+  (deffeature lf-child-feature :purpose "Child feature" :belongs-to lf-parent-feature)
+  (let ((features (list-features :parent 'lf-parent-feature)))
+    (is (member 'lf-child-feature features)))
+  (let ((features (list-features :filter "child")))
+    (is (member 'lf-child-feature features))))
+
 (test feature-parent-returns-belongs-to
   "feature-parent returns the parent feature"
   (deffeature parent-feature :purpose "I am the parent")

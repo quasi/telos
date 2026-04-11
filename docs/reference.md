@@ -360,7 +360,10 @@ Core data structure representing intent at any level (feature, function, class).
 
 **Parameters**:
 
-- `name` — Symbol naming the function or class, OR list for method specializers:
+- `name` — One of:
+  - Symbol naming an existing function or class when the name is unambiguous
+  - Typed entity spec `(:function symbol)` or `(:class symbol)` when a name exists in multiple namespaces
+  - List for method specializers:
   - `(generic-name specializer1 specializer2 ...)` where specializers are class names or `(eql value)`
 - `feature` — Which feature this belongs to
 - `role` — Role within the feature
@@ -370,10 +373,11 @@ Core data structure representing intent at any level (feature, function, class).
 **Returns**: `name`
 
 **Behavior**:
-1. For symbols: stores intent on symbol's plist (functions) or class registry (classes)
-2. For method specs: stores intent in method registry (keyed by specializer list)
-3. Registers as member of feature (if `feature` specified)
-4. Does not modify the function, class, or method definition itself
+1. For unambiguous symbols: stores intent on the appropriate registry automatically
+2. For typed entity specs: stores intent on the registry for that entity kind
+3. For method specs: stores intent in method registry (keyed by specializer list)
+4. Registers as member of feature (if `feature` specified)
+5. Does not modify the function, class, or method definition itself
 
 **Example (function)**:
 
@@ -441,7 +445,10 @@ Core data structure representing intent at any level (feature, function, class).
 
 **Parameters**:
 
-- `name` — Symbol naming the function/class/struct/condition, OR list for method specializers:
+- `name` — One of:
+  - Symbol naming a function/class/struct/condition when the name is unambiguous
+  - Typed entity spec `(:function symbol)`, `(:class symbol)`, `(:struct symbol)`, or `(:condition symbol)`
+  - List for method specializers:
   - `(generic-name specializer1 ...)` for method intent
 
 **Returns**: `intent` struct or `nil` if not found
@@ -451,10 +458,13 @@ Core data structure representing intent at any level (feature, function, class).
 For lists (method specializers):
 1. Method registry
 
-For symbols:
-1. Symbol plist (for `defun/i`, `defstruct/i`, `define-condition/i`, or `defintent`)
-2. Class metaclass (for `defclass/i` classes)
-3. Class registry (for `defintent` on classes)
+For typed entity specs:
+1. Entity registry for functions, structs, and conditions
+2. Class metaclass or class registry for classes
+
+For plain symbols:
+1. Resolves the symbol to exactly one intent-bearing entity kind
+2. Signals an error if the symbol is ambiguous across namespaces
 
 **Example (function)**:
 
@@ -468,6 +478,13 @@ For symbols:
 ```lisp
 (get-intent 'token-bucket)
 ;; => #S(INTENT :PURPOSE "Store per-user rate limit state" ...)
+```
+
+**Example (explicit class)**:
+
+```lisp
+(get-intent '(:class token-bucket))
+;; => #S(INTENT :PURPOSE "Class-level intent" ...)
 ```
 
 **Example (method)**:
@@ -530,7 +547,7 @@ For symbols:
 
 **Parameters**:
 
-- `name` — Symbol naming the function or class
+- `name` — Symbol, typed entity spec, or method spec accepted by `get-intent`
 
 **Returns**: Feature name (symbol) or `nil`
 
@@ -553,18 +570,18 @@ For symbols:
 (intent-chain name) → list
 ```
 
-**Purpose**: Get full intent chain from function/class up to root feature.
+**Purpose**: Get full intent chain from an entity up to root feature.
 
 **Parameters**:
 
-- `name` — Symbol naming the function or class
+- `name` — Symbol, typed entity spec, or method spec accepted by `get-intent`
 
 **Returns**: List of plists, each representing one level of the hierarchy. Returns `nil` if `name` has no intent.
 
 **Plist Format**:
 
 ```lisp
-(:type <:function | :class | :feature>
+(:type <:function | :class | :struct | :condition | :method | :feature>
  :name <symbol>
  :role <string or nil>
  :purpose <string or nil>
@@ -725,7 +742,7 @@ For symbols:
 **Signature**:
 
 ```lisp
-(list-features &optional filter &key parent under) → list
+(list-features [&optional filter] &key filter parent under) → list
 ```
 
 **Purpose**: List features, optionally filtered.
@@ -754,8 +771,12 @@ For symbols:
 ;; => (RATE-LIMITING) ; if purpose contains "abuse"
 
 ;; List direct children
-(list-features nil :parent 'security)
+(list-features :parent 'security)
 ;; => (USER-AUTHENTICATION ENCRYPTION ...)
+
+;; Keyword filter also works
+(list-features :filter "auth" :parent 'security)
+;; => (USER-AUTHENTICATION)
 ```
 
 ---

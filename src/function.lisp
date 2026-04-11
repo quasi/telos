@@ -3,6 +3,70 @@
 ;;; Function intent
 ;;; defun/i macro and defintent for retrofitting
 
+(defun classify-symbol-intent-target (name)
+  "Classify NAME as a single intent-bearing entity kind.
+   Returns one of :function or :class, or signals an error if ambiguous."
+  (let ((functionp (fboundp name))
+        (classp (not (null (find-class name nil)))))
+    (cond
+      ((and functionp classp)
+       (error "Ambiguous intent target ~S names both a function and a class. Use (:function ~S) or (:class ~S)."
+              name name name))
+      (classp :class)
+      (functionp :function)
+      (t :function))))
+
+(defun normalize-intent-target (name)
+  "Normalize NAME into one of:
+   - (:function symbol), (:class symbol), (:struct symbol), (:condition symbol)
+   - (generic-name specializer...) for method intent
+   - symbol for legacy unambiguous lookup."
+  (if (and (consp name) (keywordp (car name)))
+      (destructuring-bind (kind target) name
+        (unless (member kind '(:function :class :struct :condition))
+          (error "Unsupported intent target kind ~S." kind))
+        (unless (symbolp target)
+          (error "Intent target name must be a symbol, got ~S." target))
+        (values kind target :entity))
+      (if (consp name)
+          (values nil name :method)
+          (values nil name :symbol))))
+
+(defun symbol-intent-candidates (name)
+  "Collect all intent-bearing entity kinds currently associated with NAME."
+  (remove nil
+          (list (when (entity-intent :function name) :function)
+                (when (entity-intent :struct name) :struct)
+                (when (entity-intent :condition name) :condition)
+                (when (let ((class (find-class name nil)))
+                        (when (and class (typep class 'intentful-class))
+                          (class-intent class)))
+                  :class)
+                (when (gethash name *class-intent-registry*) :class))
+          :test #'eq))
+
+(defun resolve-symbol-intent (name)
+  "Resolve NAME to a unique intent and entity kind.
+   Returns (values intent kind) or (values nil nil) if none exists."
+  (let ((kinds (remove-duplicates (symbol-intent-candidates name) :test #'eq)))
+    (cond
+      ((null kinds) (values nil nil))
+      ((cdr kinds)
+       (error "Ambiguous intent query ~S matches multiple entity kinds: ~{~S~^, ~}. Use (:function ~S), (:class ~S), (:struct ~S), or (:condition ~S)."
+              name kinds name name name name))
+      (t
+       (let ((kind (car kinds)))
+         (values (case kind
+                   (:function (entity-intent :function name))
+                   (:struct (entity-intent :struct name))
+                   (:condition (entity-intent :condition name))
+                   (:class (or (let ((class (find-class name nil)))
+                                 (when (and class (typep class 'intentful-class))
+                                   (class-intent class)))
+                               (gethash name *class-intent-registry*)))
+                   (otherwise nil))
+                 kind))))))
+
 (defun parse-intent-clauses (body)
   "Parse intent clauses from the beginning of a function body.
    Returns (values intent-plist remaining-body).
@@ -47,13 +111,16 @@
         (parse-intent-clauses body)
       (let* ((feature (getf intent-plist :belongs-to))
              (intent-form (when intent-plist
-                            `(setf (get ',name 'telos:intent)
-                                   (make-intent
-                                    ,@(loop for (k v) on intent-plist by #'cddr
-                                            collect k
-                                            collect (if (member k '(:role :purpose))
-                                                        v
-                                                        `',v)))))))
+                            `(register-entity-intent
+                              :function
+                              ',name
+                              (make-intent
+                               ,@(loop for (k v) on intent-plist by #'cddr
+                                       collect k
+                                       collect (if (member k '(:role :purpose))
+                                                   v
+                                                   `',v))))))
+        )
         `(progn
            (defun ,name ,lambda-list
              ,@(when docstring (list docstring))
@@ -82,18 +149,29 @@
                                    :constraints ',constraints
                                    :assumptions ',assumptions
                                    :verification ',verification)))
-    (if (consp name)
-        ;; Method specializer: store in method registry
-        `(progn
-           (setf (gethash ',name *method-intent-registry*) ,intent-form)
-           ,@(when feature `((register-member ',feature ',name :method)))
-           ',name)
-        ;; Symbol: existing behavior
-        (let ((member-type `(if (find-class ',name nil) :class :function)))
-          `(progn
-             (setf (get ',name 'telos:intent) ,intent-form)
-             ,@(when feature `((register-member ',feature ',name ,member-type)))
-             ',name)))))
+    (multiple-value-bind (kind target target-type)
+        (normalize-intent-target name)
+      (case target-type
+        (:method
+         `(progn
+            (setf (gethash ',target *method-intent-registry*) ,intent-form)
+            ,@(when feature `((register-member ',feature ',target :method)))
+            ',target))
+        (:entity
+         `(progn
+            ,(if (eq kind :class)
+                 `(setf (gethash ',target *class-intent-registry*) ,intent-form)
+                 `(register-entity-intent ,kind ',target ,intent-form))
+            ,@(when feature `((register-member ',feature ',target ,kind)))
+            ',target))
+        (:symbol
+         (let ((resolved-kind (classify-symbol-intent-target target)))
+           `(progn
+              ,(if (eq resolved-kind :class)
+                   `(setf (gethash ',target *class-intent-registry*) ,intent-form)
+                   `(register-entity-intent ,resolved-kind ',target ,intent-form))
+              ,@(when feature `((register-member ',feature ',target ,resolved-kind)))
+              ',target)))))))
 
 (defun method-intent (method-spec)
   "Get intent for a method specialization.
@@ -104,16 +182,33 @@
 (defun get-intent (name)
   "Get intent for a function, class, or method.
    NAME can be a symbol (function/class) or list (method specializers).
-   Checks: 1) method registry (if list), 2) symbol plist, 3) intentful-class metaclass, 4) class registry."
-  (if (consp name)
-      ;; Method specializer
-      (method-intent name)
-      ;; Symbol
-      (or (get name 'telos:intent)
-          (let ((class (find-class name nil)))
-            (when (and class (typep class 'intentful-class))
-              (class-intent class)))
-          (gethash name *class-intent-registry*))))
+   For ambiguous names that exist in multiple namespaces, use (:function foo),
+   (:class foo), (:struct foo), or (:condition foo)."
+  (multiple-value-bind (kind target target-type)
+      (normalize-intent-target name)
+    (case target-type
+      (:method (method-intent target))
+      (:entity
+       (case kind
+         (:function (entity-intent :function target))
+         (:struct (entity-intent :struct target))
+         (:condition (entity-intent :condition target))
+         (:class (or (let ((class (find-class target nil)))
+                       (when (and class (typep class 'intentful-class))
+                         (class-intent class)))
+                     (gethash target *class-intent-registry*)))))
+      (:symbol
+       (nth-value 0 (resolve-symbol-intent target))))))
+
+(defun get-intent-entry (name)
+  "Get intent plus entity kind for NAME.
+   Returns (values intent kind) or (values nil nil) if not found."
+  (multiple-value-bind (kind target target-type)
+      (normalize-intent-target name)
+    (case target-type
+      (:method (values (method-intent target) :method))
+      (:entity (values (get-intent name) kind))
+      (:symbol (resolve-symbol-intent target)))))
 
 (defun intent-feature (name)
   "Get which feature a function or class belongs to."

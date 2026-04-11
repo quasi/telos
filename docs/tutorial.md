@@ -255,7 +255,7 @@ Find features by name or purpose:
 ;; => (RATE-LIMITING)
 
 ;; List only children of a feature
-(list-features nil :parent 'rate-limiting)
+(list-features :parent 'rate-limiting)
 ;; => (TOKEN-BUCKET)
 ```
 

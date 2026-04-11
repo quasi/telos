@@ -106,6 +106,19 @@
   (let ((decisions (feature-decisions 'df-dec-test-2)))
     (is (= 2 (length decisions)))))
 
+(test deffeature-reload-replaces-inline-decisions
+  "re-evaluating deffeature replaces inline decisions instead of duplicating them"
+  (remhash 'df-dec-reload telos::*decision-registry*)
+  (deffeature df-dec-reload
+    :purpose "Reload-safe decisions"
+    :decisions ((:id :first :chose "A")))
+  (deffeature df-dec-reload
+    :purpose "Reload-safe decisions"
+    :decisions ((:id :first :chose "A")))
+  (let ((decisions (feature-decisions 'df-dec-reload)))
+    (is (= 1 (length decisions)))
+    (is (eq :first (decision-id (first decisions))))))
+
 (test deffeature-without-decisions-unchanged
   "deffeature without :decisions works exactly as before"
   (deffeature df-dec-test-3

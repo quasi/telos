@@ -51,6 +51,8 @@
    - (:verification ((id \"desc\") ...))"
   (multiple-value-bind (intent-plist remaining-options)
       (parse-class-intent-options options)
+    (when (assoc :metaclass remaining-options)
+      (error "DEFCLASS/I does not accept :METACLASS. It always uses INTENTFUL-CLASS for ~S." name))
     (let* ((feature (getf intent-plist :belongs-to))
            (intent-form `(make-intent
                           ,@(loop for (k v) on intent-plist by #'cddr

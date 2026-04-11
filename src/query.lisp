@@ -22,15 +22,19 @@
         (:method (pushnew name (getf members :methods) :test #'equal))))))
 
 (defun intent-chain (name)
-  "Get full intent chain from function/class up to root feature.
-   Returns list of plists with :type, :name, :purpose, :role, :failure-modes etc."
-  (let ((intent (get-intent name)))
+  "Get full intent chain from an entity up to its root feature.
+   NAME may be a symbol, a typed entity spec like (:class foo),
+   or a method spec like (generic-name specializer ...)."
+  (multiple-value-bind (intent entry-type)
+      (get-intent-entry name)
     (when intent
       (let ((chain nil)
-            (entry-type (if (find-class name nil) :class :function)))
+            (entry-name (if (and (consp name) (keywordp (car name)))
+                            (second name)
+                            name)))
         ;; First entry: the function/class itself
         (push (list :type entry-type
-                    :name name
+                    :name entry-name
                     :role (intent-role intent)
                     :purpose (intent-purpose intent)
                     :failure-modes (intent-failure-modes intent))

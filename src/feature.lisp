@@ -28,14 +28,17 @@
                    :verification ',verification
                    :belongs-to ',belongs-to))
      ,@(when decisions
-         (loop for dec in decisions
-               collect `(record-decision ',name
-                          :id ,(getf dec :id)
-                          :chose ,(getf dec :chose)
-                          :over ',(getf dec :over)
-                          :because ,(getf dec :because)
-                          :date ,(getf dec :date)
-                          :decided-by ,(getf dec :decided-by))))
+         `((replace-feature-decisions
+            ',name
+            (list
+             ,@(loop for dec in decisions
+                     collect `(make-decision
+                               :id ,(getf dec :id)
+                               :chose ,(getf dec :chose)
+                               :over ',(getf dec :over)
+                               :because ,(getf dec :because)
+                               :date ,(getf dec :date)
+                               :decided-by ,(getf dec :decided-by)))))))
      ',name))
 
 (defun feature-parent (name)
@@ -51,25 +54,43 @@
         when (eq name (intent-belongs-to intent))
           collect feature-name))
 
-(defun list-features (&optional filter &key parent under)
+(defun list-features (&rest args)
   "List features, optionally filtered.
+
+   Supports both legacy positional FILTER and keyword arguments:
+   (list-features \"auth\")
+   (list-features :filter \"auth\" :parent 'security)
 
    FILTER - substring to match against name or purpose
    PARENT - only direct children of this feature
    UNDER - all descendants of this feature (not implemented yet)"
-  (declare (ignore under)) ; TODO: implement recursive descent
-  (let ((features (if parent
-                      (feature-children parent)
-                      (all-features))))
-    (if filter
-        (let ((filter-down (string-downcase filter)))
-          (remove-if-not
-           (lambda (name)
-             (let* ((intent (feature-intent name))
-                    (name-str (string-downcase (symbol-name name)))
-                    (purpose (when intent (intent-purpose intent))))
-               (or (search filter-down name-str)
-                   (and purpose
-                        (search filter-down (string-downcase purpose))))))
-           features))
-        features)))
+  (let* ((filter (if (and args (not (keywordp (car args))))
+                     (pop args)
+                     nil))
+         (parent nil)
+         (under nil))
+    (when (oddp (length args))
+      (error "LIST-FEATURES options must be keyword/value pairs: ~S" args))
+    (loop for (key value) on args by #'cddr
+          do (case key
+               (:filter (setf filter value))
+               (:parent (setf parent value))
+               (:under (setf under value))
+               (otherwise
+                (error "Unknown LIST-FEATURES option ~S." key))))
+    (when under nil)
+    (let ((features (if parent
+                        (feature-children parent)
+                        (all-features))))
+      (if filter
+          (let ((filter-down (string-downcase filter)))
+            (remove-if-not
+             (lambda (name)
+               (let* ((intent (feature-intent name))
+                      (name-str (string-downcase (symbol-name name)))
+                      (purpose (when intent (intent-purpose intent))))
+                 (or (search filter-down name-str)
+                     (and purpose
+                          (search filter-down (string-downcase purpose))))))
+             features))
+          features))))

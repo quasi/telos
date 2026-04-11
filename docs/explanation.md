@@ -123,15 +123,15 @@ Telos uses macros (`defun/i`, `defclass/i`, `defstruct/i`, `define-condition/i`)
 ### Why Store Intent on Symbols and Classes?
 
 Intent is stored in different locations depending on the entity type:
-- **Functions** (`defun/i`, `defintent`): On the symbol's plist under `'telos:intent`
-- **Structs** (`defstruct/i`): On the symbol's plist under `'telos:intent`
-- **Conditions** (`define-condition/i`): On the symbol's plist under `'telos:intent`
+- **Functions** (`defun/i`, `defintent`): In `*entity-intent-registry*` keyed by `(:function symbol)`
+- **Structs** (`defstruct/i`): In `*entity-intent-registry*` keyed by `(:struct symbol)`
+- **Conditions** (`define-condition/i`): In `*entity-intent-registry*` keyed by `(:condition symbol)`
 - **Classes** (`defclass/i`): On the class object via `intentful-class` metaclass
 - **Classes** (`defintent`): In `*class-intent-registry*` hash table
 - **Methods** (`defintent` with specializers): In `*method-intent-registry*` hash table
 
 **Rationale**:
-- Symbol plists are fast and idiomatic in Lisp
+- Kind-aware registries avoid collisions between Common Lisp's separate function and class namespaces
 - Metaclasses provide clean integration with CLOS
 - Method registry uses `equal` test to match specializer lists
 - No external database required

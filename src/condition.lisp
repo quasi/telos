@@ -20,12 +20,14 @@
     (let ((feature (getf intent-plist :belongs-to)))
       `(progn
          (define-condition ,name ,parent-types ,slots ,@remaining-options)
-         (setf (get ',name 'telos:intent)
-               (make-intent
-                ,@(loop for (k v) on intent-plist by #'cddr
-                        collect k
-                        collect (if (member k '(:role :purpose))
-                                    v
-                                    `',v))))
+         (register-entity-intent
+          :condition
+          ',name
+          (make-intent
+           ,@(loop for (k v) on intent-plist by #'cddr
+                   collect k
+                   collect (if (member k '(:role :purpose))
+                               v
+                               `',v))))
          ,@(when feature `((register-member ',feature ',name :condition)))
          ',name))))

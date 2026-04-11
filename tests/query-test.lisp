@@ -58,6 +58,20 @@
   (defun query-no-intent-fn () nil)
   (is (null (intent-chain 'query-no-intent-fn))))
 
+(test intent-chain-accepts-explicit-kind
+  "intent-chain accepts typed entity specs for ambiguous names"
+  (defclass/i query-ambiguous ()
+    ()
+    (:feature query-test-api)
+    (:purpose "Ambiguous class"))
+  (defun/i query-ambiguous ()
+    (:feature query-test-rate-limiting)
+    (:role "Ambiguous function")
+    nil)
+  (let ((chain (intent-chain '(:function query-ambiguous))))
+    (is (eq :function (getf (first chain) :type)))
+    (is (eq 'query-ambiguous (getf (first chain) :name)))))
+
 ;;; feature-members tests
 
 (test feature-members-returns-functions

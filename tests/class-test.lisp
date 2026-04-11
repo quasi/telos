@@ -93,3 +93,12 @@
   ;; Should return nil for non-intentful class
   (defclass plain-class-for-test () ())
   (is (null (class-intent 'plain-class-for-test))))
+
+(test defclass-i-rejects-custom-metaclass
+  "defclass/i rejects :metaclass because it always uses intentful-class"
+  (signals error
+    (macroexpand-1
+     '(defclass/i invalid-meta-class ()
+        ()
+        (:metaclass standard-class)
+        (:purpose "Invalid")))))

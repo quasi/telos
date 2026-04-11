@@ -74,6 +74,21 @@
   (defun no-intent-fn () nil)
   (is (null (get-intent 'no-intent-fn))))
 
+(test get-intent-requires-explicit-kind-for-ambiguous-symbols
+  "get-intent requires explicit kind when a symbol names multiple entities"
+  (defclass ambiguous-entity () ())
+  (defun/i ambiguous-entity ()
+    (:feature ambiguous-function-feature)
+    nil)
+  (defintent (:class ambiguous-entity)
+    :feature ambiguous-class-feature
+    :purpose "Class intent")
+  (signals error (get-intent 'ambiguous-entity))
+  (is (eq 'ambiguous-function-feature
+          (intent-feature '(:function ambiguous-entity))))
+  (is (eq 'ambiguous-class-feature
+          (intent-feature '(:class ambiguous-entity)))))
+
 ;;; intent-feature - quick lookup
 
 (test intent-feature-returns-feature-name
