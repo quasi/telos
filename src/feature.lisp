@@ -18,8 +18,10 @@
    BELONGS-TO - parent feature symbol
    DECISIONS - list of decision plists (:id :chose :over :because :date :decided-by)
 
-   Nested plists are validated at macroexpansion time: an unrecognized key
-   signals INVALID-INTENT-DECLARATION rather than being silently dropped."
+   Nested structured fields are literal data, never evaluated — use RECORD-DECISION
+   for a computed decision. They are validated at macroexpansion time: an
+   unrecognized key, a wrong value type, or a form where data belongs signals
+   INVALID-INTENT-DECLARATION rather than being silently dropped."
   (let ((context (declaration-context "DEFFEATURE" name)))
     (validate-intent-fields (list :goals goals
                                   :constraints constraints
@@ -42,14 +44,18 @@
          `((replace-feature-decisions
             ',name
             (list
+             ;; Every field is quoted: an inline decision is data, exactly like
+             ;; :goals and :failure-modes. Previously only :over was quoted, so
+             ;; :over (list "a") stored the unevaluated form while :chose (f)
+             ;; evaluated — an asymmetry nothing announced.
              ,@(loop for dec in decisions
                      collect `(make-decision
-                               :id ,(getf dec :id)
-                               :chose ,(getf dec :chose)
+                               :id ',(getf dec :id)
+                               :chose ',(getf dec :chose)
                                :over ',(getf dec :over)
-                               :because ,(getf dec :because)
-                               :date ,(getf dec :date)
-                               :decided-by ,(getf dec :decided-by)))))))
+                               :because ',(getf dec :because)
+                               :date ',(getf dec :date)
+                               :decided-by ',(getf dec :decided-by)))))))
      ',name))
 
 (defun feature-parent (name)

@@ -371,3 +371,76 @@
 (test invalid-declaration-is-an-error
   "It is an error, matching the top level's strictness"
   (is (subtypep 'invalid-intent-declaration 'error)))
+
+;;; Decision values are literal data, and their types are checked here rather
+;;; than by MAKE-DECISION at load time
+
+(test deffeature-rejects-computed-decision-value
+  "A computed :chose used to be evaluated, unlike :over — an asymmetry that made
+   :over (list ...) store an unevaluated form"
+  (signals-invalid
+   (deffeature probe-i :purpose "p"
+     :decisions ((:id :d1 :chose (concatenate 'string "signed " "cookies"))))))
+
+(test deffeature-rejects-computed-over
+  (signals-invalid
+   (deffeature probe-i2 :purpose "p" :decisions ((:id :d1 :over (list "a" "b"))))))
+
+(test decision-value-error-points-at-record-decision
+  "The error names the field, the expected type, and where computed values belong"
+  (let ((report (invalid-declaration-report
+                 '(deffeature probe-i3 :purpose "p"
+                   :decisions ((:id :d1 :chose (compute-it)))))))
+    (is (not (null report)))
+    (is (search "CHOSE" report))
+    (is (search "string" report))
+    (is (search "RECORD-DECISION" report))))
+
+(test deffeature-rejects-non-keyword-decision-id
+  (signals-invalid
+   (deffeature probe-i4 :purpose "p" :decisions ((:id "not-a-keyword" :chose "x")))))
+
+(test deffeature-rejects-non-string-in-over
+  ":over is a list of the alternatives that were rejected, as strings"
+  (signals-invalid
+   (deffeature probe-i5 :purpose "p" :decisions ((:id :d1 :over ("a" 42))))))
+
+(test deffeature-rejects-non-list-over
+  (signals-invalid
+   (deffeature probe-i6 :purpose "p" :decisions ((:id :d1 :over "just-a-string")))))
+
+(test deffeature-stores-decision-values-literally
+  "Every decision field is literal data — no field is evaluated"
+  (eval '(deffeature validation-literal-decisions
+          :purpose "Literal decision values"
+          :decisions ((:id :d1 :chose "signed cookies"
+                       :over ("server-side sessions" "JWT")
+                       :because "Stateless" :date "2026-07-30" :decided-by "Baba"))))
+  (let ((d (first (feature-decisions 'validation-literal-decisions))))
+    (is (eq :d1 (decision-id d)))
+    (is (string= "signed cookies" (decision-chose d)))
+    (is (equal '("server-side sessions" "JWT") (decision-over d)))
+    (is (string= "Baba" (decision-decided-by d)))))
+
+(test deffeature-accepts-nil-decision-fields
+  "Every field but the id is optional"
+  (finishes
+   (eval '(deffeature validation-terse-decisions
+           :purpose "p"
+           :decisions ((:id :d1) (:id :d2 :chose "x"))))))
+
+;;; Form detection needs no allowlist: a symbol can never head a list of entries
+
+(test deffeature-detects-any-computed-field-value
+  "mapcar/remove/concatenate used to fall through and blame an entry named MAPCAR"
+  (let ((report (invalid-declaration-report
+                 '(deffeature probe-j :purpose "p" :goals (mapcar #'identity nil)))))
+    (is (not (null report)))
+    (is (search "never evaluated" report))
+    (is (not (search "entry MAPCAR" report)))))
+
+(test deffeature-detects-computed-decisions-collection
+  (let ((report (invalid-declaration-report
+                 '(deffeature probe-j2 :purpose "p" :decisions (remove nil nil)))))
+    (is (not (null report)))
+    (is (search "never evaluated" report))))

@@ -62,6 +62,13 @@
        (if expected
            (format stream "keyword options must come in pairs, one of ~{~S~^, ~}" expected)
            (format stream "~S entries accept no keyword options~A" field *entry-shape-hint*)))
+      (:value-type
+       (let ((value (getf entry key)))
+         (format stream "~S must be ~A, not ~S" key expected value)
+         ;; Only a compound value suggests someone expected evaluation.
+         (when (consp value)
+           (format stream ". Decision values are literal data; use RECORD-DECISION ~
+                           for a computed decision"))))
       (:field-not-a-list
        (format stream "expected a list of entries~A; values are taken literally, not evaluated"
                *entry-shape-hint*))
@@ -91,7 +98,7 @@
            :reader invalid-intent-declaration-reason
            :documentation "One of :UNKNOWN-KEY, :UNKNOWN-CLAUSE, :CLAUSE-ARITY,
 :DUPLICATE-KEY, :NON-KEYWORD-KEY, :OPTIONS-BEFORE-DESCRIPTION, :ODD-PLIST, :NOT-A-LIST,
-:FIELD-NOT-A-LIST, :UNEVALUATED-FORM."))
+:FIELD-NOT-A-LIST, :UNEVALUATED-FORM, :VALUE-TYPE."))
   (:documentation "Signalled at macroexpansion time when an intent declaration is
 malformed or carries a key the declaration does not understand. A distinct type so
 it can be grepped, handled, and escalated.")
@@ -154,28 +161,29 @@ it can be grepped, handled, and escalated.")
                          :key (second entry) :expected expected))
   (cddr entry))
 
-(defparameter *form-heads*
-  '(quote function list list* append cons)
-  "Heads of forms someone might expect a field value to be evaluated as. Field values
-   are quoted by the macros, so such a value is a mistake, not a computation.")
-
-(defun form-valued-field-p (value)
-  "True if VALUE looks like a form to evaluate rather than a literal list of entries.
-   A real entry list has conses for elements, so a symbol in the head position is a
-   reliable tell."
+(defun form-valued-p (value)
+  "True if VALUE looks like a form someone expects to be evaluated rather than
+   literal data. A list of entries always has conses for elements, so a symbol in
+   the head position is already wrong; asking whether that symbol names an operator
+   just tells us which message to give. No allowlist of heads: (MAPCAR ...) and
+   (REMOVE ...) are as much a mistake as (LIST ...)."
   (and (consp value)
        (car value)
        (symbolp (car value))
-       (or (member (car value) *form-heads*)
-           ;; Implementations name the quasiquote marker differently.
-           (string= (symbol-name (car value)) "QUASIQUOTE"))))
+       (let ((head (car value)))
+         (or (fboundp head)
+             (macro-function head)
+             (special-operator-p head)
+             ;; Implementations name the quasiquote marker differently, and it is
+             ;; not fbound.
+             (string= (symbol-name head) "QUASIQUOTE")))))
 
 (defun validate-intent-entries (field entries context)
   "Validate ENTRIES, the value of intent FIELD, e.g. :GOALS or :FAILURE-MODES.
    Each entry must be a list (id \"description\" . options), where options are
    keyword/value pairs drawn from the keys FIELD accepts."
   (let ((expected (cdr (assoc field *intent-entry-option-keys*))))
-    (when (form-valued-field-p entries)
+    (when (form-valued-p entries)
       (invalid-declaration :unevaluated-form context field entries :expected expected))
     (unless (proper-list-p entries)
       (invalid-declaration :field-not-a-list context field entries :expected expected))
@@ -185,10 +193,37 @@ it can be grepped, handled, and escalated.")
       (validate-plist-keys (entry-options entry expected context field)
                            expected context field entry))))
 
+(defparameter *decision-value-types*
+  '((:id keywordp "a keyword")
+    (:chose stringp "a string")
+    (:because stringp "a string")
+    (:date stringp "a string")
+    (:decided-by stringp "a string")
+    (:over string-list-p "a list of strings"))
+  "The type each decision field accepts, mirroring the DECISION struct's slot types.
+   These are checked at macroexpansion time so the message names the field and the
+   declaration, rather than surfacing as a MAKE-DECISION type error at load time.")
+
+(defun string-list-p (value)
+  "True if VALUE is a proper list of strings — the alternatives a decision rejected."
+  (and (proper-list-p value)
+       (every #'stringp value)))
+
+(defun validate-decision-values (decision context)
+  "Check each decision value against the type its field accepts. NIL is always
+   allowed: every field but the id is optional."
+  (loop for (key value) on decision by #'cddr
+        for spec = (assoc key *decision-value-types*)
+        do (destructuring-bind (&optional field predicate description) spec
+             (declare (ignore field))
+             (when (and predicate value (not (funcall predicate value)))
+               (invalid-declaration :value-type context :decisions decision
+                                    :key key :expected description)))))
+
 (defun validate-decision-entries (decisions context)
   "Validate DECISIONS, a list of plists of the form
    (:id :x :chose \"A\" :over (\"B\") :because \"why\" :date \"...\" :decided-by \"...\")."
-  (when (form-valued-field-p decisions)
+  (when (form-valued-p decisions)
     (invalid-declaration :unevaluated-form context :decisions decisions
                          :expected *decision-keys*))
   (unless (proper-list-p decisions)
@@ -198,7 +233,8 @@ it can be grepped, handled, and escalated.")
     (unless (and (consp decision) (proper-list-p decision))
       (invalid-declaration :not-a-list context :decisions decision
                            :expected *decision-keys*))
-    (validate-plist-keys decision *decision-keys* context :decisions decision)))
+    (validate-plist-keys decision *decision-keys* context :decisions decision)
+    (validate-decision-values decision context)))
 
 (defun validate-intent-fields (plist context)
   "Validate every nested intent field present in PLIST (a make-intent-style plist).
