@@ -10,6 +10,7 @@
     :serial t
     :components
     ((:file "package")
+     (:file "validation")
      (:file "intent")
      (:file "storage")
      (:file "decision")
@@ -37,6 +38,7 @@
      (:file "condition-test")
      (:file "method-test")
      (:file "query-test")
-     (:file "decision-test"))))
+     (:file "decision-test")
+     (:file "validation-test"))))
   :perform (test-op (o s)
              (uiop:symbol-call :fiveam :run! :telos-tests)))

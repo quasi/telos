@@ -67,26 +67,34 @@
                    (otherwise nil))
                  kind))))))
 
-(defun parse-intent-clauses (body)
+(defun parse-intent-clauses (body &optional context)
   "Parse intent clauses from the beginning of a function body.
    Returns (values intent-plist remaining-body).
-   Intent clauses are forms like (:feature foo) (:role \"...\") etc."
+   Intent clauses are forms like (:feature foo) (:role \"...\") etc.
+
+   A keyword-headed form that is not a recognized clause signals
+   INVALID-INTENT-DECLARATION: a keyword can never name a function or macro, so
+   such a form is always a typo'd clause, and consuming it silently would drop
+   both the intent and — since clauses are popped off the body — the form itself."
   (let ((intent-plist nil)
         (remaining body))
-    (loop while (and remaining
-                     (consp (car remaining))
-                     (keywordp (caar remaining)))
-          do (let ((clause (pop remaining)))
-               (case (car clause)
-                 (:feature (setf (getf intent-plist :belongs-to) (cadr clause)))
-                 (:role (setf (getf intent-plist :role) (cadr clause)))
-                 (:purpose (setf (getf intent-plist :purpose) (cadr clause)))
-                 (:failure-modes (setf (getf intent-plist :failure-modes) (cadr clause)))
-                 (:goals (setf (getf intent-plist :goals) (cadr clause)))
-                 (:constraints (setf (getf intent-plist :constraints) (cadr clause)))
-                 (:assumptions (setf (getf intent-plist :assumptions) (cadr clause)))
-                 (:verification (setf (getf intent-plist :verification) (cadr clause))))))
-    (values intent-plist remaining)))
+    (flet ((clause-value (clause) (intent-clause-value clause context)))
+      (loop while (and remaining
+                       (consp (car remaining))
+                       (keywordp (caar remaining)))
+            do (let ((clause (pop remaining)))
+                 (case (car clause)
+                   (:feature (setf (getf intent-plist :belongs-to) (clause-value clause)))
+                   (:role (setf (getf intent-plist :role) (clause-value clause)))
+                   (:purpose (setf (getf intent-plist :purpose) (clause-value clause)))
+                   (:failure-modes
+                    (setf (getf intent-plist :failure-modes) (clause-value clause)))
+                   (:goals (setf (getf intent-plist :goals) (clause-value clause)))
+                   (:constraints (setf (getf intent-plist :constraints) (clause-value clause)))
+                   (:assumptions (setf (getf intent-plist :assumptions) (clause-value clause)))
+                   (:verification (setf (getf intent-plist :verification) (clause-value clause)))
+                   (otherwise (invalid-intent-clause clause context)))))
+      (values intent-plist remaining))))
 
 (defmacro defun/i (name lambda-list &body body)
   "Define a function with intent.
@@ -107,28 +115,29 @@
           do (push (pop body) declarations))
     (setf declarations (nreverse declarations))
     ;; Parse intent clauses
-    (multiple-value-bind (intent-plist remaining-body)
-        (parse-intent-clauses body)
-      (let* ((feature (getf intent-plist :belongs-to))
-             (intent-form (when intent-plist
-                            `(register-entity-intent
-                              :function
-                              ',name
-                              (make-intent
-                               ,@(loop for (k v) on intent-plist by #'cddr
-                                       collect k
-                                       collect (if (member k '(:role :purpose))
-                                                   v
-                                                   `',v))))))
-        )
-        `(progn
-           (defun ,name ,lambda-list
-             ,@(when docstring (list docstring))
-             ,@declarations
-             ,@remaining-body)
-           ,@(when intent-form (list intent-form))
-           ,@(when feature `((register-member ',feature ',name :function)))
-           ',name)))))
+    (let ((context (declaration-context "DEFUN/I" name)))
+      (multiple-value-bind (intent-plist remaining-body)
+          (parse-intent-clauses body context)
+        (validate-intent-fields intent-plist context)
+        (let* ((feature (getf intent-plist :belongs-to))
+               (intent-form (when intent-plist
+                              `(register-entity-intent
+                                :function
+                                ',name
+                                (make-intent
+                                 ,@(loop for (k v) on intent-plist by #'cddr
+                                         collect k
+                                         collect (if (member k '(:role :purpose))
+                                                     v
+                                                     `',v)))))))
+          `(progn
+             (defun ,name ,lambda-list
+               ,@(when docstring (list docstring))
+               ,@declarations
+               ,@remaining-body)
+             ,@(when intent-form (list intent-form))
+             ,@(when feature `((register-member ',feature ',name :function)))
+             ',name))))))
 
 (defmacro defintent (name &key feature role purpose failure-modes
                                goals constraints assumptions verification)
@@ -141,6 +150,12 @@
    ROLE - role within the feature
    PURPOSE - why this exists
    Other fields same as deffeature."
+  (validate-intent-fields (list :failure-modes failure-modes
+                                :goals goals
+                                :constraints constraints
+                                :assumptions assumptions
+                                :verification verification)
+                          (declaration-context "DEFINTENT" name))
   (let ((intent-form `(make-intent :belongs-to ',feature
                                    :role ,role
                                    :purpose ,purpose

@@ -14,6 +14,15 @@
    #:intent-role
    #:intent-members
 
+   ;; Declaration validation
+   #:invalid-intent-declaration
+   #:invalid-intent-declaration-context
+   #:invalid-intent-declaration-field
+   #:invalid-intent-declaration-entry
+   #:invalid-intent-declaration-key
+   #:invalid-intent-declaration-expected
+   #:invalid-intent-declaration-reason
+
    ;; Definition macros
    #:deffeature
    #:defun/i

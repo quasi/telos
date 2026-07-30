@@ -16,19 +16,24 @@
           (push item slots)))
     (values (nreverse slots) (nreverse intent-clauses))))
 
-(defun intent-clauses-to-plist (clauses)
-  "Convert intent clauses to a plist for make-intent."
+(defun intent-clauses-to-plist (clauses &optional context)
+  "Convert intent clauses to a plist for make-intent.
+   A keyword-headed clause that is not recognized signals
+   INVALID-INTENT-DECLARATION — PARSE-STRUCT-SLOTS-AND-INTENT has already removed
+   it from the slot list, so accepting it silently would lose it entirely."
   (let ((plist nil))
-    (dolist (clause clauses)
-      (case (car clause)
-        (:feature (setf (getf plist :belongs-to) (cadr clause)))
-        (:role (setf (getf plist :role) (cadr clause)))
-        (:purpose (setf (getf plist :purpose) (cadr clause)))
-        (:failure-modes (setf (getf plist :failure-modes) (cadr clause)))
-        (:goals (setf (getf plist :goals) (cadr clause)))
-        (:constraints (setf (getf plist :constraints) (cadr clause)))
-        (:assumptions (setf (getf plist :assumptions) (cadr clause)))
-        (:verification (setf (getf plist :verification) (cadr clause)))))
+    (flet ((clause-value (clause) (intent-clause-value clause context)))
+      (dolist (clause clauses)
+        (case (car clause)
+          (:feature (setf (getf plist :belongs-to) (clause-value clause)))
+          (:role (setf (getf plist :role) (clause-value clause)))
+          (:purpose (setf (getf plist :purpose) (clause-value clause)))
+          (:failure-modes (setf (getf plist :failure-modes) (clause-value clause)))
+          (:goals (setf (getf plist :goals) (clause-value clause)))
+          (:constraints (setf (getf plist :constraints) (clause-value clause)))
+          (:assumptions (setf (getf plist :assumptions) (clause-value clause)))
+          (:verification (setf (getf plist :verification) (clause-value clause)))
+          (otherwise (invalid-intent-clause clause context)))))
     plist))
 
 (defmacro defstruct/i (name-and-options &body slots-and-intent)
@@ -48,8 +53,10 @@
     (let* ((name (if (consp name-and-options)
                      (car name-and-options)
                      name-and-options))
-           (intent-plist (intent-clauses-to-plist intent-clauses))
+           (context (declaration-context "DEFSTRUCT/I" name))
+           (intent-plist (intent-clauses-to-plist intent-clauses context))
            (feature (getf intent-plist :belongs-to)))
+      (validate-intent-fields intent-plist context)
       `(progn
          (defstruct ,name-and-options ,@slots)
          (register-entity-intent

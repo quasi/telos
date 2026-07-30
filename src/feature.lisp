@@ -16,7 +16,18 @@
    FAILURE-MODES - list of (:id \"description\" :violates :goal-id)
    VERIFICATION - list of (:id \"description\")
    BELONGS-TO - parent feature symbol
-   DECISIONS - list of decision plists (:id :chose :over :because :date :decided-by)"
+   DECISIONS - list of decision plists (:id :chose :over :because :date :decided-by)
+
+   Nested plists are validated at macroexpansion time: an unrecognized key
+   signals INVALID-INTENT-DECLARATION rather than being silently dropped."
+  (let ((context (declaration-context "DEFFEATURE" name)))
+    (validate-intent-fields (list :goals goals
+                                  :constraints constraints
+                                  :assumptions assumptions
+                                  :failure-modes failure-modes
+                                  :verification verification)
+                            context)
+    (validate-decision-entries decisions context))
   `(progn
      (register-feature
       ',name

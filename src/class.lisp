@@ -19,22 +19,40 @@
     (when (and class (typep class 'intentful-class))
       (slot-value class 'intent))))
 
-(defun parse-class-intent-options (options)
-  "Extract intent-related options from defclass options.
-   Returns (values intent-plist remaining-options)."
+(defparameter *defclass-passthrough-options*
+  '(:default-initargs :documentation :metaclass)
+  "Standard DEFCLASS options DEFCLASS/I forwards untouched. :METACLASS gets its own
+   dedicated error in DEFCLASS/I, so it is listed here rather than rejected as a typo.")
+
+(defparameter *define-condition-passthrough-options*
+  '(:default-initargs :documentation :report)
+  "Standard DEFINE-CONDITION options DEFINE-CONDITION/I forwards untouched.")
+
+(defun parse-class-intent-options (options &optional context passthrough)
+  "Extract intent-related options from defclass/define-condition options.
+   Returns (values intent-plist remaining-options).
+
+   With CONTEXT, an option that is neither an intent clause nor one of PASSTHROUGH
+   signals INVALID-INTENT-DECLARATION here, at macroexpansion time. Without this a
+   misspelled intent clause is forwarded to DEFCLASS, which reports it — if at all —
+   as an unrelated initarg error at load time."
   (let ((intent-plist nil)
         (remaining nil))
-    (dolist (opt options)
-      (case (car opt)
-        (:feature (setf (getf intent-plist :belongs-to) (cadr opt)))
-        (:role (setf (getf intent-plist :role) (cadr opt)))
-        (:purpose (setf (getf intent-plist :purpose) (cadr opt)))
-        (:failure-modes (setf (getf intent-plist :failure-modes) (cadr opt)))
-        (:goals (setf (getf intent-plist :goals) (cadr opt)))
-        (:constraints (setf (getf intent-plist :constraints) (cadr opt)))
-        (:assumptions (setf (getf intent-plist :assumptions) (cadr opt)))
-        (:verification (setf (getf intent-plist :verification) (cadr opt)))
-        (otherwise (push opt remaining))))
+    (flet ((clause-value (opt) (intent-clause-value opt context)))
+      (dolist (opt options)
+        (case (and (consp opt) (car opt))
+          (:feature (setf (getf intent-plist :belongs-to) (clause-value opt)))
+          (:role (setf (getf intent-plist :role) (clause-value opt)))
+          (:purpose (setf (getf intent-plist :purpose) (clause-value opt)))
+          (:failure-modes (setf (getf intent-plist :failure-modes) (clause-value opt)))
+          (:goals (setf (getf intent-plist :goals) (clause-value opt)))
+          (:constraints (setf (getf intent-plist :constraints) (clause-value opt)))
+          (:assumptions (setf (getf intent-plist :assumptions) (clause-value opt)))
+          (:verification (setf (getf intent-plist :verification) (clause-value opt)))
+          (otherwise
+           (when (and context (consp opt) (not (member (car opt) passthrough)))
+             (invalid-intent-clause opt context (append *intent-clause-keys* passthrough)))
+           (push opt remaining)))))
     (values intent-plist (nreverse remaining))))
 
 (defmacro defclass/i (name superclasses slots &rest options)
@@ -50,7 +68,10 @@
    - (:assumptions ((id \"desc\") ...))
    - (:verification ((id \"desc\") ...))"
   (multiple-value-bind (intent-plist remaining-options)
-      (parse-class-intent-options options)
+      (parse-class-intent-options options
+                                  (declaration-context "DEFCLASS/I" name)
+                                  *defclass-passthrough-options*)
+    (validate-intent-fields intent-plist (declaration-context "DEFCLASS/I" name))
     (when (assoc :metaclass remaining-options)
       (error "DEFCLASS/I does not accept :METACLASS. It always uses INTENTFUL-CLASS for ~S." name))
     (let* ((feature (getf intent-plist :belongs-to))

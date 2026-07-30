@@ -16,7 +16,10 @@
    - (:assumptions ((id \"desc\") ...))
    - (:verification ((id \"desc\") ...))"
   (multiple-value-bind (intent-plist remaining-options)
-      (parse-class-intent-options options)
+      (parse-class-intent-options options
+                                  (declaration-context "DEFINE-CONDITION/I" name)
+                                  *define-condition-passthrough-options*)
+    (validate-intent-fields intent-plist (declaration-context "DEFINE-CONDITION/I" name))
     (let ((feature (getf intent-plist :belongs-to)))
       `(progn
          (define-condition ,name ,parent-types ,slots ,@remaining-options)
