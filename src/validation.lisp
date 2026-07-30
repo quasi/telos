@@ -26,6 +26,8 @@
        (format stream "In ~@[~A, ~]clause ~S: " context entry))
       ((:field-not-a-list :unevaluated-form)
        (format stream "In ~@[~A, ~]the value of ~S is ~S: " context field entry))
+      ((:unknown-entry-field :invalid-option-key)
+       (format stream "In ~@[~A, ~]" context))
       (t
        (format stream "In ~@[~A, ~]~S entry ~S: " context field entry)))
     ;; What the problem is.
@@ -78,6 +80,12 @@
                *entry-shape-hint*))
       (:not-a-list
        (format stream "entry must be a proper list~A" *entry-shape-hint*))
+      (:unknown-entry-field
+       (format stream "~S is not an intent field that takes entry options; ~
+                       expected one of ~{~S~^, ~}"
+               key expected))
+      (:invalid-option-key
+       (format stream "~S is not a keyword; entry options are keywords" key))
       (t
        ;; Never fail while printing a condition.
        (format stream "invalid declaration (~S)~@[; offending key ~S~]" reason key)))))
@@ -102,7 +110,8 @@
            :reader invalid-intent-declaration-reason
            :documentation "One of :UNKNOWN-KEY, :UNKNOWN-CLAUSE, :CLAUSE-ARITY,
 :DUPLICATE-KEY, :NON-KEYWORD-KEY, :OPTIONS-BEFORE-DESCRIPTION, :ODD-PLIST, :NOT-A-LIST,
-:FIELD-NOT-A-LIST, :UNEVALUATED-FORM, :VALUE-TYPE, :DUPLICATE-ENTRY-ID."))
+:FIELD-NOT-A-LIST, :UNEVALUATED-FORM, :VALUE-TYPE, :DUPLICATE-ENTRY-ID,
+:UNKNOWN-ENTRY-FIELD, :INVALID-OPTION-KEY."))
   (:documentation "Signalled at macroexpansion time when an intent declaration is
 malformed or carries a key the declaration does not understand. A distinct type so
 it can be grepped, handled, and escalated.")
@@ -118,12 +127,45 @@ it can be grepped, handled, and escalated.")
   "Keywords a decision plist accepts. Rationale goes in :BECAUSE.")
 
 (defparameter *intent-entry-option-keys*
-  '((:goals . nil)
-    (:constraints . nil)
-    (:assumptions . nil)
-    (:verification . nil)
-    (:failure-modes . (:violates)))
-  "Keyword options each kind of intent entry accepts beyond (id \"description\").")
+  ;; Built with LIST rather than quoted: DEFINE-ENTRY-OPTION pushes onto these
+  ;; cells, and destructively modifying literal source data is undefined.
+  (list (list :goals)
+        (list :constraints)
+        (list :assumptions)
+        (list :verification)
+        (list :failure-modes :violates :mitigation))
+  "Keyword options each kind of intent entry accepts beyond (id \"description\").
+
+   :VIOLATES names a goal the failure mode breaks; :MITIGATION says how to recover
+   from it — the field to read when the reader is the one recovering. Extend this
+   with DEFINE-ENTRY-OPTION rather than by pushing here.")
+
+(defun add-entry-option (field key)
+  "Teach FIELD to accept the entry option KEY. Use DEFINE-ENTRY-OPTION instead —
+   validation happens at macroexpansion time, so the change has to be in effect
+   before the declarations that use it are compiled."
+  (let ((cell (assoc field *intent-entry-option-keys*)))
+    (unless cell
+      (invalid-declaration :unknown-entry-field "DEFINE-ENTRY-OPTION" field field
+                           :key field
+                           :expected (mapcar #'car *intent-entry-option-keys*)))
+    (unless (keywordp key)
+      (invalid-declaration :invalid-option-key "DEFINE-ENTRY-OPTION" field key :key key))
+    (pushnew key (cdr cell))
+    key))
+
+(defmacro define-entry-option (field &rest keys)
+  "Widen the vocabulary of intent FIELD to accept KEYS as entry options.
+
+     (define-entry-option :failure-modes :owner :severity)
+
+   Declarations are validated as they are macroexpanded, so this takes effect for
+   everything compiled after it — put it in a file that loads before the
+   declarations that use it. Extending is deliberate on purpose: an unknown key is
+   still an error, so a typo in your own vocabulary is caught like any other."
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (dolist (key ',keys)
+       (add-entry-option ',field key))))
 
 (defparameter *intent-clause-keys*
   '(:feature :role :purpose :failure-modes :goals :constraints :assumptions :verification)

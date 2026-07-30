@@ -14,7 +14,14 @@
    #:intent-role
    #:intent-members
 
+   ;; Intent entries
+   #:entry-id
+   #:entry-description
+   #:entry-option
+
    ;; Declaration validation
+   #:define-entry-option
+   #:add-entry-option
    #:invalid-intent-declaration
    #:invalid-intent-declaration-context
    #:invalid-intent-declaration-field

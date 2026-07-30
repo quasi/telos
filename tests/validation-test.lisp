@@ -365,7 +365,9 @@
     (invalid-intent-declaration (e)
       (is (eq :bogus-key (invalid-intent-declaration-key e)))
       (is (eq :failure-modes (invalid-intent-declaration-field e)))
-      (is (equal '(:violates) (invalid-intent-declaration-expected e)))
+      ;; The accepted keys, not a fixed list of them — DEFINE-ENTRY-OPTION can widen it.
+      (is (member :violates (invalid-intent-declaration-expected e)))
+      (is (member :mitigation (invalid-intent-declaration-expected e)))
       (is (eq :unknown-key (invalid-intent-declaration-reason e))))))
 
 (test invalid-declaration-is-an-error
@@ -479,3 +481,100 @@
    (defun/i validation-probe-fn-8 ()
      (:goals ((:g1 "first") (:g1 "second")))
      nil)))
+
+;;; :mitigation on a failure mode
+;;;
+;;; The vocabulary was too small, not too loose: :mitigation says how to recover
+;;; from the failure, which is the field an agent reads when it is the one
+;;; recovering. It was rejected because nothing had put it in the table.
+
+(test failure-modes-accept-mitigation
+  (finishes
+   (eval '(deffeature validation-mitigation-feature
+           :purpose "p"
+           :failure-modes ((:fm1 "A response arrives late" :mitigation "Check expires-at"))))))
+
+(test failure-modes-accept-violates-and-mitigation-together
+  (finishes
+   (eval '(deffeature validation-both-options-feature
+           :purpose "p"
+           :goals ((:g1 "A goal"))
+           :failure-modes ((:fm1 "Breaks it" :violates :g1 :mitigation "Retry"))))))
+
+(test mitigation-survives-into-the-stored-intent
+  "Accepting the key is worth nothing if the value is not retrievable"
+  (eval '(deffeature validation-mitigation-stored
+          :purpose "p"
+          :failure-modes ((:fm1 "Late response" :mitigation "Check expires-at"))))
+  (let ((mode (first (intent-failure-modes (feature-intent 'validation-mitigation-stored)))))
+    (is (string= "Check expires-at" (entry-option mode :mitigation)))))
+
+(test misspelled-mitigation-is-still-rejected
+  "The point of the vocabulary is that a typo in it is still caught"
+  (let ((report (invalid-declaration-report
+                 '(deffeature probe-m1 :purpose "p"
+                   :failure-modes ((:fm1 "d" :mitigaton "typo"))))))
+    (is (not (null report)))
+    (is (search "MITIGATON" report))
+    (is (search "MITIGATION" report))
+    (is (search "VIOLATES" report))))
+
+(test goals-still-accept-no-options
+  "Widening :failure-modes must not widen every field"
+  (signals-invalid
+   (deffeature probe-m2 :purpose "p" :goals ((:g1 "d" :mitigation "nope")))))
+
+;;; Entry accessors
+;;;
+;;; An entry is (id) or (id description . options). Consumers had to know that
+;;; shape and walk the list themselves.
+
+(test entry-accessors-read-a-full-entry
+  (let ((entry '(:fm1 "A description" :violates :g1 :mitigation "Retry")))
+    (is (eq :fm1 (entry-id entry)))
+    (is (string= "A description" (entry-description entry)))
+    (is (eq :g1 (entry-option entry :violates)))
+    (is (string= "Retry" (entry-option entry :mitigation)))))
+
+(test entry-accessors-tolerate-a-bare-entry
+  "(:id) with no description is a legal entry"
+  (let ((entry '(:g1)))
+    (is (eq :g1 (entry-id entry)))
+    (is (null (entry-description entry)))
+    (is (null (entry-option entry :violates)))))
+
+(test entry-accessors-tolerate-a-non-entry
+  "Accessors are read-side; they report absence rather than signalling"
+  (is (null (entry-id nil)))
+  (is (null (entry-description nil)))
+  (is (null (entry-option nil :violates))))
+
+;;; Extending the vocabulary
+;;;
+;;; A project with its own constitution should not need a telos release to name
+;;; a field telos never thought of.
+
+(test define-entry-option-widens-a-field
+  (eval '(define-entry-option :goals :validation-owner))
+  (finishes
+   (eval '(deffeature validation-extended-feature
+           :purpose "p"
+           :goals ((:g1 "A goal" :validation-owner "quasi")))))
+  ;; and the rest of the vocabulary is unchanged
+  (signals-invalid
+   (deffeature probe-m3 :purpose "p" :goals ((:g1 "d" :still-unknown "no")))))
+
+(test define-entry-option-is-idempotent
+  (eval '(define-entry-option :goals :validation-owner))
+  (eval '(define-entry-option :goals :validation-owner))
+  (is (= 1 (count :validation-owner
+                  (cdr (assoc :goals telos::*intent-entry-option-keys*))))))
+
+(test define-entry-option-rejects-an-unknown-field
+  "A typo'd field would add a key nothing ever consults"
+  (signals invalid-intent-declaration
+    (eval '(define-entry-option :failure-mode :mitigation))))
+
+(test define-entry-option-rejects-a-non-keyword
+  (signals invalid-intent-declaration
+    (eval '(define-entry-option :goals "owner"))))
