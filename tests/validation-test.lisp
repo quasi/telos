@@ -562,6 +562,20 @@
     (finishes (intent-entry-description entry))
     (is (null (intent-entry-option entry :violates)))))
 
+(test entry-option-terminates-on-a-circular-option-tail
+  "A guard that loops is worse than the type error it replaced: the audit does
+   not fail, it wedges. The timeout is the assertion — without it a regression
+   hangs the suite instead of failing it."
+  (let* ((tail (list :v 1 :w 2))
+         (entry (list* :a "d" tail)))
+    (setf (cdr (last tail)) tail)
+    #+sbcl
+    (finishes
+     (sb-ext:with-timeout 5
+       (is (null (intent-entry-option entry :v)))))
+    #-sbcl
+    (is (null (intent-entry-option entry :v)))))
+
 (test audit-survives-a-malformed-entry-from-make-intent
   "The reachable path: MAKE-INTENT takes anything, and the audit walks it"
   (setf (gethash 'validation-malformed-feature telos::*feature-registry*)
@@ -579,9 +593,10 @@
   "Run BODY with *INTENT-ENTRY-OPTION-KEYS* restored afterwards.
    Without this a test that widens a field leaves every later test — and anyone
    continuing in the same image — with a vocabulary a fresh load would not have."
-  `(let ((saved (mapcar #'copy-list telos::*intent-entry-option-keys*)))
-     (unwind-protect (progn ,@body)
-       (setf telos::*intent-entry-option-keys* saved))))
+  (let ((saved (gensym "SAVED-VOCABULARY")))
+    `(let ((,saved (mapcar #'copy-list telos::*intent-entry-option-keys*)))
+       (unwind-protect (progn ,@body)
+         (setf telos::*intent-entry-option-keys* ,saved)))))
 
 (test define-entry-option-widens-a-field
   (with-clean-vocabulary
@@ -650,20 +665,56 @@
              :purpose "p"
              :goals ((:g1 "d" :validation-computed "yes")))))))
 
-(test define-entry-option-takes-effect-at-compile-time
-  "The whole point of the EVAL-WHEN: a declaration later in the same file, under
-   COMPILE-FILE, must see the widened vocabulary. Every other test here goes
-   through EVAL, which only ever reaches the :EXECUTE situation."
+(defun compile-source-failed-p (text)
+  "Compile TEXT as a file and return COMPILE-FILE's FAILURE-P.
+
+   COMPILE-FILE does not let a macroexpansion error escape — it traps it, returns
+   a fasl, and reports the failure in its third value. A test that only asserts
+   the call FINISHES therefore passes whether or not the code compiles."
   (uiop:with-temporary-file (:pathname source :type "lisp" :direction :output
                              :stream out :keep nil)
-    (write-string "(in-package :telos/tests)
+    (write-string text out)
+    (finish-output out)
+    ;; The negative case is *meant* to fail to compile; its diagnostics would
+    ;; otherwise print into the test run and read like a broken suite.
+    (let* ((sink (make-broadcast-stream))
+           (*error-output* sink)
+           (*standard-output* sink))
+      (multiple-value-bind (fasl warnings-p failure-p)
+          ;; :OVERRIDE T keeps the deliberate failure out of the enclosing
+          ;; compilation unit, whose summary would otherwise announce a caught
+          ;; ERROR at the end of an all-green run.
+          (with-compilation-unit (:override t)
+            (handler-bind ((warning #'muffle-warning))
+              (compile-file source :verbose nil :print nil)))
+        (declare (ignore warnings-p))
+        (when fasl (ignore-errors (delete-file fasl)))
+        failure-p))))
+
+(defparameter +compiled-widening+
+  "(in-package :telos/tests)
 (define-entry-option :goals :validation-compiled)
 (deffeature validation-compiled-feature
   :purpose \"p\"
   :goals ((:g1 \"A goal\" :validation-compiled \"set at compile time\")))
-" out)
-    (finish-output out)
-    (with-clean-vocabulary
-      (let ((fasl nil))
-        (finishes (setf fasl (compile-file source :verbose nil :print nil)))
-        (when fasl (delete-file fasl))))))
+")
+
+(defparameter +compiled-without-widening+
+  "(in-package :telos/tests)
+(deffeature validation-uncompiled-feature
+  :purpose \"p\"
+  :goals ((:g1 \"A goal\" :validation-compiled \"never widened\")))
+")
+
+(test define-entry-option-takes-effect-at-compile-time
+  "The whole point of the EVAL-WHEN: a declaration later in the same file, under
+   COMPILE-FILE, must see the widened vocabulary. Every other test here goes
+   through EVAL, which only ever reaches the :EXECUTE situation.
+
+   The negative case is half the test. Without it this passes even if
+   DEFINE-ENTRY-OPTION does nothing at all, because COMPILE-FILE swallows the
+   error either way."
+  (with-clean-vocabulary
+    (is (null (compile-source-failed-p +compiled-widening+))))
+  (with-clean-vocabulary
+    (is (compile-source-failed-p +compiled-without-widening+))))
