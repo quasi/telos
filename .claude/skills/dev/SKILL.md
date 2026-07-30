@@ -93,6 +93,12 @@ All definition macros validate what they were given at macroexpansion time, via
 | Decision plists | `validate-decision-entries` | `*decision-keys*` |
 | Top-level clauses in `defun/i`, `defstruct/i`, `defclass/i`, `define-condition/i` | `invalid-intent-clause` from each parser's `case` `otherwise` | `*intent-clause-keys*` |
 | Forwarded `defclass` / `define-condition` options | `parse-class-intent-options` | `*defclass-passthrough-options*`, `*define-condition-passthrough-options*` |
+| Decision value types | `validate-decision-values` | `*decision-value-types*` |
+
+Nested structured fields are literal data; scalar top-level fields (`:purpose`, `:role`) are
+evaluated. `form-valued-p` catches a form where data belongs — it needs no list of known heads,
+since a list of entries always has conses for elements, so any symbol in the head position is
+already wrong.
 
 `deffeature` and `defintent` get top-level strictness free from their `&key` lambda lists.
 If you add a nested field, add it to `*intent-entry-option-keys*` — an unlisted field is not

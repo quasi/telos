@@ -88,10 +88,15 @@ Core data structure representing intent at any level (feature, function, class).
 - `goals` — List of `(:id "description")` for success criteria
 - `constraints` — List of `(:id "description")` for boundaries
 - `assumptions` — List of `(:id "description")` for world assumptions
-- `failure-modes` — List of `(:id "description" :violates :goal-id)` for failure scenarios
+- `failure-modes` — List of `(:id "description" :violates :goal-id)` for failure scenarios.
+  `:violates` names a **goal** id — goals only, not constraints — declared either here or on
+  any ancestor feature. It is not resolved at macroexpansion time: the ancestor may not be
+  defined yet, and a member legitimately violates a goal declared on its parent feature.
 - `verification` — List of `(:id "description")` for verification methods
 - `belongs-to` — Parent feature symbol (optional, creates hierarchy)
-- `decisions` — List of decision plists inline (see `record-decision` for the full schema)
+- `decisions` — List of decision plists inline: `:id` (keyword), `:chose` (string), `:over`
+  (list of strings), `:because` (string), `:date` (string), `:decided-by` (string). All values
+  are literal — use `record-decision` for a computed decision.
 
 **Returns**: `name`
 
@@ -912,6 +917,16 @@ validates its nested entries this way, so an unrecognized key is never silently 
 **Entry shape**: `(:id)` or `(:id "description" . options)`. The description may be omitted,
 but a keyword in its place is rejected rather than guessed at — `(:f1 :violates :g1)` would
 read as an option here and as a description to any consumer taking `(second entry)`.
+
+**Nested structured fields are literal data; scalar top-level fields may be computed.** That
+is the boundary: `:purpose` and `:role` are evaluated, while `:goals`, `:constraints`,
+`:assumptions`, `:verification`, `:failure-modes` and `:decisions` are taken exactly as
+written. A form where data belongs — `:over (list "a" "b")`, `:goals (mapcar #'f xs)` — is
+rejected rather than stored unevaluated. `record-decision` is the computed path.
+
+**Decision value types** are checked at macroexpansion time against the `decision` struct's
+slot types, so the message names the field and the declaration instead of surfacing as a
+`make-decision` type error at load time. `:over` must be a list of *strings*.
 
 **Also rejected**: a key given twice (the second value would be dropped by `getf`), a
 dangling key with no value, a dotted or non-list entry, a field value that is not a list of

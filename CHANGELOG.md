@@ -46,13 +46,46 @@ and `defintent`:
 standard options for the underlying macro, at macroexpansion time rather than as an unrelated
 initarg error at load time.
 
+#### Decision values are literal data
+
+`deffeature`'s `:decisions` clause quoted `:over` but evaluated `:id`, `:chose`, `:because`,
+`:date` and `:decided-by`. Nothing announced the asymmetry, so `:over (list "a" "b")` stored
+the unevaluated form `(LIST "a" "b")` and queries then reported an alternative literally named
+`LIST`, while `:chose (f)` evaluated normally.
+
+All six fields are now literal, matching every other nested field in the library. The boundary
+is: **nested structured fields are literal data; scalar top-level fields may be computed.**
+`record-decision` remains the path for a computed decision.
+
+Decision values are also type-checked at macroexpansion time against the `decision` struct's
+slot types — `:id` a keyword, the rest strings, `:over` a list of strings. This moves an
+existing constraint earlier with a better message: previously a wrong type either signalled a
+`make-decision` type error at load time or, for `:over`, was stored silently. The one genuinely
+new rule is that `:over`'s elements must be strings; the struct only required a list.
+
+An inline `:id` given as a symbolic constant (`+decision-id+`) no longer resolves; use
+`record-decision`.
+
+#### Cyclic `:belongs-to` no longer kills the image
+
+`(deffeature a :belongs-to b)` with `(deffeature b :belongs-to a)` made `intent-chain` push an
+entry per iteration until the heap was exhausted — `Heap exhausted, game over`. The parent walk
+now stops on a repeated feature.
+
+A cycle is not rejected at declaration time, deliberately. Reloading a file that re-points a
+parent can be transiently cyclic mid-load, and rejecting it would break a legitimate reload —
+the same reason `:violates` is not resolved at macroexpansion time. The principle: **local
+shape is strict at macroexpansion; cross-declaration topology is reported by an audit, not
+enforced by the macro.** The audit is not in this release.
+
 ### Added
 
 - `invalid-intent-declaration`, a distinct condition (subtype of `program-error`) so this class
   of mistake can be grepped, handled, and escalated rather than scrolling past in a build log.
   Readers: `invalid-intent-declaration-context`, `-field`, `-entry`, `-key`, `-expected`,
   `-reason`.
-- `src/validation.lisp`, `tests/validation-test.lisp` (74 new checks; 246 total).
+- `src/validation.lisp`, `tests/validation-test.lisp`, and cycle tests in
+  `tests/query-test.lisp` (97 new checks; 269 total).
 - Documentation of the strictness rules in `docs/reference.md` and both shipped skills.
 
 ### Fixed
