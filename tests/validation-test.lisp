@@ -507,7 +507,7 @@
           :purpose "p"
           :failure-modes ((:fm1 "Late response" :mitigation "Check expires-at"))))
   (let ((mode (first (intent-failure-modes (feature-intent 'validation-mitigation-stored)))))
-    (is (string= "Check expires-at" (entry-option mode :mitigation)))))
+    (is (string= "Check expires-at" (intent-entry-option mode :mitigation)))))
 
 (test misspelled-mitigation-is-still-rejected
   "The point of the vocabulary is that a typo in it is still caught"
@@ -531,50 +531,139 @@
 
 (test entry-accessors-read-a-full-entry
   (let ((entry '(:fm1 "A description" :violates :g1 :mitigation "Retry")))
-    (is (eq :fm1 (entry-id entry)))
-    (is (string= "A description" (entry-description entry)))
-    (is (eq :g1 (entry-option entry :violates)))
-    (is (string= "Retry" (entry-option entry :mitigation)))))
+    (is (eq :fm1 (intent-entry-id entry)))
+    (is (string= "A description" (intent-entry-description entry)))
+    (is (eq :g1 (intent-entry-option entry :violates)))
+    (is (string= "Retry" (intent-entry-option entry :mitigation)))))
 
 (test entry-accessors-tolerate-a-bare-entry
   "(:id) with no description is a legal entry"
   (let ((entry '(:g1)))
-    (is (eq :g1 (entry-id entry)))
-    (is (null (entry-description entry)))
-    (is (null (entry-option entry :violates)))))
+    (is (eq :g1 (intent-entry-id entry)))
+    (is (null (intent-entry-description entry)))
+    (is (null (intent-entry-option entry :violates)))))
 
 (test entry-accessors-tolerate-a-non-entry
   "Accessors are read-side; they report absence rather than signalling"
-  (is (null (entry-id nil)))
-  (is (null (entry-description nil)))
-  (is (null (entry-option nil :violates))))
+  (is (null (intent-entry-id nil)))
+  (is (null (intent-entry-description nil)))
+  (is (null (intent-entry-option nil :violates))))
+
+(test entry-accessors-tolerate-a-malformed-entry
+  "The macros reject these shapes, but MAKE-INTENT is exported and validates
+   nothing, and CHECK-INTENT-REFERENCES sweeps every intent in the image — one
+   bad entry must not take the whole audit down with a GETF type error."
+  (dolist (entry '((:fm1 "d" :violates)       ; odd option tail
+                   (:fm1 :violates :g1)       ; keyword where the description goes
+                   (:a "d" . :b)              ; dotted option tail
+                   (:a . :b)                  ; dotted entry
+                   :not-a-list))
+    (finishes (intent-entry-id entry))
+    (finishes (intent-entry-description entry))
+    (is (null (intent-entry-option entry :violates)))))
+
+(test audit-survives-a-malformed-entry-from-make-intent
+  "The reachable path: MAKE-INTENT takes anything, and the audit walks it"
+  (setf (gethash 'validation-malformed-feature telos::*feature-registry*)
+        (make-intent :purpose "p" :failure-modes (list (list :fm1 "d" :violates))))
+  (unwind-protect
+       (finishes (check-intent-references))
+    (remhash 'validation-malformed-feature telos::*feature-registry*)))
 
 ;;; Extending the vocabulary
 ;;;
 ;;; A project with its own constitution should not need a telos release to name
 ;;; a field telos never thought of.
 
+(defmacro with-clean-vocabulary (&body body)
+  "Run BODY with *INTENT-ENTRY-OPTION-KEYS* restored afterwards.
+   Without this a test that widens a field leaves every later test — and anyone
+   continuing in the same image — with a vocabulary a fresh load would not have."
+  `(let ((saved (mapcar #'copy-list telos::*intent-entry-option-keys*)))
+     (unwind-protect (progn ,@body)
+       (setf telos::*intent-entry-option-keys* saved))))
+
 (test define-entry-option-widens-a-field
-  (eval '(define-entry-option :goals :validation-owner))
-  (finishes
-   (eval '(deffeature validation-extended-feature
-           :purpose "p"
-           :goals ((:g1 "A goal" :validation-owner "quasi")))))
-  ;; and the rest of the vocabulary is unchanged
+  (with-clean-vocabulary
+    (eval '(define-entry-option :goals :validation-owner))
+    (finishes
+     (eval '(deffeature validation-extended-feature
+             :purpose "p"
+             :goals ((:g1 "A goal" :validation-owner "quasi")))))
+    ;; and the rest of the vocabulary is unchanged
+    (signals-invalid
+     (deffeature probe-m3 :purpose "p" :goals ((:g1 "d" :still-unknown "no"))))))
+
+(test define-entry-option-does-not-outlive-the-test-that-set-it
+  "The fixture itself must work, or every later test runs on a polluted table"
+  (with-clean-vocabulary
+    (eval '(define-entry-option :goals :validation-scoped)))
   (signals-invalid
-   (deffeature probe-m3 :purpose "p" :goals ((:g1 "d" :still-unknown "no")))))
+   (deffeature probe-m8 :purpose "p" :goals ((:g1 "d" :validation-scoped "gone")))))
 
 (test define-entry-option-is-idempotent
-  (eval '(define-entry-option :goals :validation-owner))
-  (eval '(define-entry-option :goals :validation-owner))
-  (is (= 1 (count :validation-owner
-                  (cdr (assoc :goals telos::*intent-entry-option-keys*))))))
+  "Asserted through behaviour and through the message, not the table's internals"
+  (with-clean-vocabulary
+    (eval '(define-entry-option :goals :validation-owner))
+    (eval '(define-entry-option :goals :validation-owner))
+    (let ((report (invalid-declaration-report
+                   '(deffeature probe-m9 :purpose "p" :goals ((:g1 "d" :nope "x"))))))
+      ;; listed once in "expected one of ...", not twice
+      (is (= 1 (loop with start = 0
+                     for pos = (search "VALIDATION-OWNER" report :start2 start)
+                     while pos count 1 do (setf start (1+ pos))))))))
+
+(test define-entry-option-returns-its-keys
+  (with-clean-vocabulary
+    (is (equal '(:validation-a :validation-b)
+               (eval '(define-entry-option :goals :validation-a :validation-b))))))
+
+(test define-entry-option-keeps-built-in-options-first
+  "A project's additions come last, so the message reads the same everywhere"
+  (with-clean-vocabulary
+    (eval '(define-entry-option :failure-modes :validation-late))
+    (let ((report (invalid-declaration-report
+                   '(deffeature probe-m10 :purpose "p"
+                     :failure-modes ((:fm1 "d" :nope "x"))))))
+      (is (< (search "VIOLATES" report) (search "VALIDATION-LATE" report))))))
 
 (test define-entry-option-rejects-an-unknown-field
   "A typo'd field would add a key nothing ever consults"
   (signals invalid-intent-declaration
     (eval '(define-entry-option :failure-mode :mitigation))))
 
+(test define-entry-option-rejects-an-unknown-field-with-no-keys
+  "The field is a typo whether or not anything follows it"
+  (signals invalid-intent-declaration
+    (eval '(define-entry-option :failure-mode))))
+
 (test define-entry-option-rejects-a-non-keyword
   (signals invalid-intent-declaration
     (eval '(define-entry-option :goals "owner"))))
+
+(test add-entry-option-is-usable-directly
+  "The function under the macro, for a computed field and key"
+  (with-clean-vocabulary
+    (is (eq :validation-computed (add-entry-option :goals :validation-computed)))
+    (finishes
+     (eval '(deffeature validation-computed-feature
+             :purpose "p"
+             :goals ((:g1 "d" :validation-computed "yes")))))))
+
+(test define-entry-option-takes-effect-at-compile-time
+  "The whole point of the EVAL-WHEN: a declaration later in the same file, under
+   COMPILE-FILE, must see the widened vocabulary. Every other test here goes
+   through EVAL, which only ever reaches the :EXECUTE situation."
+  (uiop:with-temporary-file (:pathname source :type "lisp" :direction :output
+                             :stream out :keep nil)
+    (write-string "(in-package :telos/tests)
+(define-entry-option :goals :validation-compiled)
+(deffeature validation-compiled-feature
+  :purpose \"p\"
+  :goals ((:g1 \"A goal\" :validation-compiled \"set at compile time\")))
+" out)
+    (finish-output out)
+    (with-clean-vocabulary
+      (let ((fasl nil))
+        (finishes (setf fasl (compile-file source :verbose nil :print nil)))
+        (when fasl (delete-file fasl))))))

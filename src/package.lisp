@@ -15,9 +15,9 @@
    #:intent-members
 
    ;; Intent entries
-   #:entry-id
-   #:entry-description
-   #:entry-option
+   #:intent-entry-id
+   #:intent-entry-description
+   #:intent-entry-option
 
    ;; Declaration validation
    #:define-entry-option
