@@ -31,9 +31,10 @@ had to know that shape and walk it. They no longer do:
 (intent-entry-option mode :mitigation)   ; => "Check expires-at before executing"
 ```
 
-All three are read-side and total: a non-entry — `nil`, a bare keyword, a dotted or
+All three are read-side and total: a non-entry — `nil`, a bare keyword, a dotted, circular, or
 odd-length option tail — has no id, description, or options rather than signalling the way a
-bare `getf` would. `make-intent` is exported and validates nothing, and
+bare `getf` would, or looping the way a naive proper-list check would.
+`make-intent` is exported and validates nothing, and
 `check-intent-references` sweeps the whole image, so one malformed entry must not take the
 audit down with it. That audit now reads `:violates` through `intent-entry-option` instead of
 its own private accessor.
