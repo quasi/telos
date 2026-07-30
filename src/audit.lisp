@@ -48,16 +48,6 @@
         (when feature-intent
           (setf ids (append ids (mapcar #'entry-id (intent-goals feature-intent)))))))))
 
-(defun entry-id (entry)
-  "The id of an intent entry, whose shape is (id) or (id description . options)."
-  (when (consp entry)
-    (car entry)))
-
-(defun entry-violates (entry)
-  "The :violates value of a failure-mode entry, or nil."
-  (when (consp entry)
-    (getf (cddr entry) :violates)))
-
 (defun intent-finding (severity code entity entity-type reference message)
   (list :severity severity
         :code code
@@ -83,7 +73,7 @@
              (format nil "The :BELONGS-TO chain from ~S is cyclic." entity))
             findings))
     (dolist (mode (intent-failure-modes intent))
-      (let ((violates (entry-violates mode)))
+      (let ((violates (entry-option mode :violates)))
         (when (and violates (not (member violates reachable)))
           (push (intent-finding
                  :error :dangling-violates entity entity-type violates

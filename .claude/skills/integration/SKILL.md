@@ -72,14 +72,31 @@ field answers queries with a lie.
 | Field | Entry shape | Keyword options |
 |-------|-------------|-----------------|
 | `goals`, `constraints`, `assumptions`, `verification` | `(:id "description")` | none |
-| `failure-modes` | `(:id "description" :violates :goal-id)` | `:violates` |
+| `failure-modes` | `(:id "description" :violates :goal-id :mitigation "...")` | `:violates`, `:mitigation` |
 | `decisions` | plist | `:id`, `:chose`, `:over`, `:because`, `:date`, `:decided-by` |
 
 ```lisp
 (deffeature probe :purpose "p" :failure-modes ((:fm1 "a failure" :cause "x")))
 ;; => In DEFFEATURE PROBE, :FAILURE-MODES entry (:FM1 "a failure" :CAUSE "x"):
-;;    unknown keyword: :CAUSE; expected one of :VIOLATES
+;;    unknown keyword: :CAUSE; expected one of :VIOLATES, :MITIGATION
 ```
+
+Read the options back with `entry-option`; `entry-id` and `entry-description` read the rest of
+the entry shape, so you never walk the list yourself:
+
+```lisp
+(entry-option mode :mitigation)   ; => "how to recover"
+```
+
+If your project needs an option Telos does not have, add it rather than working around the
+validator. Extending is explicit, and strictness is unchanged — a typo in your own vocabulary
+is still an error:
+
+```lisp
+(define-entry-option :failure-modes :detected-by :severity)
+```
+
+It must be compiled before the declarations that use it.
 
 Also rejected, for the same reason: a key given twice, a dangling key, a clause carrying two
 values (`(:goals (...) (...))` — the second would be dropped), and a field value that looks
