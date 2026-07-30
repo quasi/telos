@@ -1,5 +1,5 @@
 (defsystem "telos"
-  :version "1.0.0"
+  :version "1.1.0"
   :author "quasi / quasiLabs"
   :license "MIT"
   :description "Intent introspection for Common Lisp — make the WHY queryable"

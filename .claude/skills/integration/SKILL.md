@@ -1,7 +1,7 @@
 ---
 name: telos-integration
 description: How to use telos intent introspection in your Common Lisp project
-version: 1.0.0
+version: 1.1.0
 author: quasiLabs
 type: integration
 ---
@@ -101,6 +101,7 @@ A decision's rationale goes in `:because`. Constraints live at feature level
 | `feature-intent` | Full intent for a feature |
 | `intent-feature` | Quick lookup: which feature owns this? |
 | `feature-decisions` | Design decisions for a feature |
+| `check-intent-references` | Audit the intent graph for unresolved references |
 
 ### Decision Tracking
 
@@ -111,6 +112,22 @@ A decision's rationale goes in `:because`. Constraints live at feature level
   :over '("server-side sessions" "JWT")
   :because "Stateless, no shared storage needed")
 ```
+
+### Auditing Your Intent Graph
+
+Strictness at declaration time cannot catch a `:violates` that names a goal on a feature
+defined in another file, so check the finished image:
+
+```lisp
+(check-intent-references)
+;; => nil when everything resolves, else findings with :code :dangling-violates,
+;;    :undefined-parent or :cyclic-hierarchy
+
+(assert-intent-references)   ; signals intent-reference-error — one line for a test
+```
+
+Worth a test in your suite: a renamed goal leaves failure modes pointing at nothing, and
+nothing else will tell you.
 
 ## MCP Tools
 

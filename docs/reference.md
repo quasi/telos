@@ -28,8 +28,13 @@ Complete reference for all Telos functions, macros, and data structures.
 - [Metaclass](#metaclass)
   - [intentful-class](#intentful-class)
   - [class-intent](#class-intent)
+- [Audit](#audit)
+  - [check-intent-references](#check-intent-references)
+  - [assert-intent-references](#assert-intent-references)
+  - [all-intentful-classes](#all-intentful-classes)
 - [Conditions](#conditions)
   - [invalid-intent-declaration](#invalid-intent-declaration)
+  - [intent-reference-error](#intent-reference-error)
 
 ---
 
@@ -688,6 +693,10 @@ For plain symbols:
 
 **Purpose**: Get members (functions, classes, structs, conditions, methods, sub-features) of a feature.
 
+**Note**: Membership is verified on read. Registration only ever adds, so re-declaring an
+entity under a second feature would otherwise leave it listed under both; each member's own
+intent is consulted, and a member that has moved away is not reported here.
+
 **Parameters**:
 
 - `feature-name` — Feature name (symbol)
@@ -884,6 +893,110 @@ For plain symbols:
 
 ---
 
+## Audit
+
+Local shape is strict at macroexpansion time. Cross-declaration topology — does this
+`:violates` name a real goal, does this `:belongs-to` exist — cannot be judged there, because
+the feature referred to may not be defined yet and load order is arbitrary. That is what the
+audit is for.
+
+### `check-intent-references`
+
+**Signature**:
+
+```lisp
+(check-intent-references) → list of findings, or nil
+```
+
+**Purpose**: Report cross-declaration mistakes in the intent graph, over the finished image.
+
+**Returns**: A deterministically ordered list of plists, or `nil` when everything resolves.
+Registry iteration is hash-ordered; the report is sorted so a human or a CI diff sees a stable
+result.
+
+**Finding keys**:
+
+| Key | Value |
+|-----|-------|
+| `:severity` | `:error` |
+| `:code` | `:dangling-violates`, `:undefined-parent`, or `:cyclic-hierarchy` |
+| `:entity` | The feature, function, class, struct, condition, or method spec |
+| `:entity-type` | `:feature`, `:function`, `:class`, `:struct`, `:condition`, `:method` |
+| `:reference` | The unresolved goal id or feature name |
+| `:message` | A sentence for a human or an agent |
+
+The codes are API — dispatch on them rather than on the message.
+
+**Never signals.** A partial or in-progress load legitimately shows dangling references; that
+means the rest has not loaded yet, not that anything is wrong. Use `assert-intent-references`
+when you want failure.
+
+**Coverage**: features, functions, structs, conditions, methods, retrofitted classes, and
+classes defined with `defclass/i` — including a `defclass/i` with no `:feature`, which appears
+in no registry and is enumerated via the metaclass instead.
+
+**Example**:
+
+```lisp
+(deffeature security :purpose "Top" :goals ((:secure "No unauthorized access")))
+(deffeature login :purpose "Log in" :belongs-to security
+  :goals ((:fast "Under 2s"))
+  :failure-modes ((:slow "Takes ages" :violates :fast)
+                  (:leak "Password leaked" :violates :secrue)))   ; typo
+
+(check-intent-references)
+;; => ((:severity :error :code :dangling-violates :entity login :entity-type :feature
+;;      :reference :secrue
+;;      :message "Failure mode :LEAK of LOGIN violates :SECRUE, which is not a goal of
+;;                LOGIN or of any feature it belongs to."))
+```
+
+`:slow` is not reported, and neither is a failure mode that violates a goal declared on a
+parent or grandparent feature — that is the documented pattern, not an exception.
+
+**See Also**: `assert-intent-references`, `intent-reference-error`
+
+---
+
+### `assert-intent-references`
+
+**Signature**:
+
+```lisp
+(assert-intent-references) → nil
+```
+
+**Purpose**: Signal `intent-reference-error` if `check-intent-references` finds anything. One
+line for a test or a CI step.
+
+**Example**:
+
+```lisp
+(test intent-graph-resolves
+  (finishes (assert-intent-references)))
+```
+
+**See Also**: `check-intent-references`
+
+---
+
+### `all-intentful-classes`
+
+**Signature**:
+
+```lisp
+(all-intentful-classes) → list of symbols
+```
+
+**Purpose**: Names of classes currently defined with the `intentful-class` metaclass.
+
+**Note**: `defclass/i` stores intent on the class metaobject, so such classes appear in no
+registry. The index behind this function is a candidate list, never truth: every name is
+re-derived through `find-class`, so a name that no longer denotes an intentful class is
+dropped here rather than reported as a phantom.
+
+---
+
 ## Conditions
 
 ### `invalid-intent-declaration`
@@ -928,6 +1041,10 @@ rejected rather than stored unevaluated. `record-decision` is the computed path.
 slot types, so the message names the field and the declaration instead of surfacing as a
 `make-decision` type error at load time. `:over` must be a list of *strings*.
 
+**Also rejected**: two entries in one field sharing an id — `:violates` could not say
+which one it meant, and one description would be hidden. Ids are compared within a field, so a
+goal and a constraint may share one.
+
 **Also rejected**: a key given twice (the second value would be dropped by `getf`), a
 dangling key with no value, a dotted or non-list entry, a field value that is not a list of
 entries, a clause carrying more than one value (`(:goals (...) (...))` — the second list would
@@ -954,6 +1071,18 @@ field values are taken literally, never evaluated.
 
 **Note**: Rationale for a decision goes in `:because`; constraints belong at feature level
 (`intent-constraints`), not on a decision.
+
+---
+
+### `intent-reference-error`
+
+**Type**: Condition (subclass of `error`)
+
+**Purpose**: Signalled by `assert-intent-references` when the intent graph has unresolved
+references.
+
+**Readers**: `intent-reference-error-findings` — the findings list from
+`check-intent-references`, so a handler can report or filter them.
 
 ---
 

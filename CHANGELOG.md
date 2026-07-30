@@ -3,6 +3,62 @@
 All notable changes to telos. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-07-30
+
+### Added
+
+#### `check-intent-references` — an audit for the intent graph
+
+`:violates` names a goal, but nothing checked that the goal existed, so a typo'd or renamed id
+made a failure mode look constrained when it wasn't — the same lie as a swallowed key, one
+level up.
+
+It cannot be checked as a declaration is read: the goal may live on a feature that is not
+defined yet, and a member legitimately violates a goal declared on its parent (the library's
+own `examples/csv-validator.lisp` does exactly that). So the check runs over the finished
+image, on demand:
+
+```lisp
+(check-intent-references)
+;; => ((:severity :error :code :dangling-violates :entity login :entity-type :feature
+;;      :reference :secrue :message "Failure mode :LEAK of LOGIN violates :SECRUE, ...")
+;;     ...)
+```
+
+Codes, which are API: `:dangling-violates`, `:undefined-parent`, `:cyclic-hierarchy`. Findings
+are sorted, so a human or a CI diff sees a stable report despite hash-ordered registries. It
+never signals — a mid-load image legitimately shows dangling references.
+
+`assert-intent-references` is the one-line form for a test or CI; it signals
+`intent-reference-error`, which carries the findings.
+
+The principle this completes: **local shape is strict at macroexpansion; cross-declaration
+topology is audited on demand.**
+
+#### `all-intentful-classes`
+
+`defclass/i` keeps intent on the class metaobject, so such classes — especially one with no
+`:feature` — appeared in no registry and were invisible to anything sweeping the image. The
+metaclass now records its instances' names.
+
+The index is a candidate list, never truth: names are re-derived through `find-class` on every
+read, so a stale entry drops out instead of becoming a phantom finding. That is the rule the
+next item applies too.
+
+### Changed
+
+- **Duplicate entry ids within one field are rejected** at macroexpansion time. Two goals with
+  one id make `:violates` ambiguous and hide a description. Ids are compared within a field, so
+  a goal and a constraint may still share one.
+
+### Fixed
+
+- **`feature-members` no longer reports a member that has moved.** `register-member` only ever
+  pushed, so re-declaring an entity under a second feature left it listed under both — a query
+  answering with something no declaration says. Membership is now verified on read against each
+  member's own intent, which also sees a later `defintent` re-pointing an entity; un-registering
+  at declaration time could not.
+
 ## [1.0.0] — 2026-07-30
 
 First stable release. The API has been in real use and has settled; this release makes
