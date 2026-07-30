@@ -444,3 +444,38 @@
                  '(deffeature probe-j2 :purpose "p" :decisions (remove nil nil)))))
     (is (not (null report)))
     (is (search "never evaluated" report))))
+
+;;; Duplicate entry ids within one field
+;;;
+;;; Two goals with the same id make :violates ambiguous and hide one description.
+
+(test deffeature-rejects-duplicate-goal-ids
+  (signals-invalid
+   (deffeature probe-k :purpose "p" :goals ((:g1 "first") (:g1 "second")))))
+
+(test deffeature-rejects-duplicate-failure-mode-ids
+  (signals-invalid
+   (deffeature probe-k2 :purpose "p"
+     :failure-modes ((:fm1 "first" :violates :g) (:fm1 "second" :violates :g)))))
+
+(test duplicate-entry-id-error-names-the-id
+  (let ((report (invalid-declaration-report
+                 '(deffeature probe-k3 :purpose "p" :goals ((:g1 "first") (:g1 "second"))))))
+    (is (not (null report)))
+    (is (search "G1" report))
+    (is (search "GOALS" report))))
+
+(test deffeature-allows-the-same-id-in-different-fields
+  "A goal :g1 and a failure mode :g1 are different things; only within a field is
+   a repeat ambiguous"
+  (finishes
+   (eval '(deffeature validation-same-id-feature
+           :purpose "p"
+           :goals ((:g1 "A goal"))
+           :constraints ((:g1 "A constraint that happens to share the id"))))))
+
+(test defun-i-rejects-duplicate-entry-ids
+  (signals-invalid
+   (defun/i validation-probe-fn-8 ()
+     (:goals ((:g1 "first") (:g1 "second")))
+     nil)))

@@ -40,6 +40,10 @@
       (:duplicate-key
        (format stream "duplicate keyword: ~S; the later value would silently replace the first"
                key))
+      (:duplicate-entry-id
+       (format stream "duplicate entry id: ~S already names another ~S entry; ~
+                       :VIOLATES could not say which one it means"
+               key field))
       (:non-keyword-key
        (format stream "~S is not a keyword; ~S entries take keyword/value pairs~@[ (~{~S~^, ~})~]"
                key field expected))
@@ -98,7 +102,7 @@
            :reader invalid-intent-declaration-reason
            :documentation "One of :UNKNOWN-KEY, :UNKNOWN-CLAUSE, :CLAUSE-ARITY,
 :DUPLICATE-KEY, :NON-KEYWORD-KEY, :OPTIONS-BEFORE-DESCRIPTION, :ODD-PLIST, :NOT-A-LIST,
-:FIELD-NOT-A-LIST, :UNEVALUATED-FORM, :VALUE-TYPE."))
+:FIELD-NOT-A-LIST, :UNEVALUATED-FORM, :VALUE-TYPE, :DUPLICATE-ENTRY-ID."))
   (:documentation "Signalled at macroexpansion time when an intent declaration is
 malformed or carries a key the declaration does not understand. A distinct type so
 it can be grepped, handled, and escalated.")
@@ -187,11 +191,19 @@ it can be grepped, handled, and escalated.")
       (invalid-declaration :unevaluated-form context field entries :expected expected))
     (unless (proper-list-p entries)
       (invalid-declaration :field-not-a-list context field entries :expected expected))
-    (dolist (entry entries)
-      (unless (and (consp entry) (proper-list-p entry))
-        (invalid-declaration :not-a-list context field entry :expected expected))
-      (validate-plist-keys (entry-options entry expected context field)
-                           expected context field entry))))
+    (let ((ids nil))
+      (dolist (entry entries)
+        (unless (and (consp entry) (proper-list-p entry))
+          (invalid-declaration :not-a-list context field entry :expected expected))
+        (validate-plist-keys (entry-options entry expected context field)
+                             expected context field entry)
+        ;; Two entries with one id make :violates ambiguous and hide a description.
+        ;; Ids are compared within a field only: a goal and a constraint may share one.
+        (let ((id (car entry)))
+          (when (member id ids :test #'eql)
+            (invalid-declaration :duplicate-entry-id context field entry
+                                 :key id :expected expected))
+          (push id ids))))))
 
 (defparameter *decision-value-types*
   '((:id keywordp "a keyword")
