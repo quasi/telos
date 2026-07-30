@@ -190,3 +190,69 @@
     (intent-reference-error (e)
       (is (listp (intent-reference-error-findings e)))
       (is (plusp (length (intent-reference-error-findings e)))))))
+
+;;; Malformed field collections
+;;;
+;;; INTENT-ENTRY-OPTION is total for one entry, but the audit walks the list
+;;; containing it, and MAKE-INTENT accepts a dotted or circular cons as the value
+;;; of a list slot. CHECK-INTENT-REFERENCES documents that it never signals; a
+;;; collection it cannot walk must therefore be a finding, not a crash and not a
+;;; hang — and not silence either.
+
+(defmacro with-registered-intent ((name intent) &body body)
+  "Poke INTENT into the feature registry under NAME for the duration of BODY.
+   MAKE-INTENT validates nothing, which is the point: this is the door a
+   malformed intent actually comes through."
+  `(progn
+     (setf (gethash ,name telos::*feature-registry*) ,intent)
+     (unwind-protect (progn ,@body)
+       (remhash ,name telos::*feature-registry*))))
+
+(test check-reports-a-dotted-failure-mode-collection
+  (with-registered-intent ('audit-dotted-modes
+                           (make-intent :purpose "p"
+                                        :failure-modes (cons '(:fm "d") :not-a-list)))
+    (let ((finding (finding-for (check-intent-references)
+                                :malformed-field 'audit-dotted-modes)))
+      (is (not (null finding)))
+      (is (eq :failure-modes (getf finding :reference))))))
+
+(test check-reports-a-dotted-goal-collection
+  (with-registered-intent ('audit-dotted-goals
+                           (make-intent :purpose "p" :goals (cons '(:g "d") :not-a-list)))
+    (is (not (null (finding-for (check-intent-references)
+                                :malformed-field 'audit-dotted-goals))))))
+
+(test check-terminates-on-a-circular-failure-mode-collection
+  "A hang is worse than a crash: the audit does not fail, it wedges"
+  (let ((modes (list '(:fm "d"))))
+    (setf (cdr modes) modes)
+    (with-registered-intent ('audit-circular-modes
+                             (make-intent :purpose "p" :failure-modes modes))
+      #+sbcl
+      (finishes (sb-ext:with-timeout 5
+                  (is (not (null (finding-for (check-intent-references)
+                                              :malformed-field 'audit-circular-modes))))))
+      #-sbcl
+      (is (not (null (finding-for (check-intent-references)
+                                  :malformed-field 'audit-circular-modes)))))))
+
+(test check-still-audits-the-rest-of-a-feature-with-one-bad-field
+  "One unwalkable field must not cost the findings the other fields would give"
+  (with-registered-intent ('audit-mixed-fields
+                           (make-intent :purpose "p"
+                                        :goals (cons '(:g "d") :not-a-list)
+                                        :failure-modes (list (list :fm "d" :violates :nowhere))))
+    (let ((findings (check-intent-references)))
+      (is (not (null (finding-for findings :malformed-field 'audit-mixed-fields))))
+      (is (not (null (finding-for findings :dangling-violates 'audit-mixed-fields)))))))
+
+(test check-tolerates-a-malformed-collection-on-an-ancestor
+  "Resolution walks the parent's goals too, and the parent may be as broken"
+  (with-registered-intent ('audit-bad-parent
+                           (make-intent :purpose "p" :goals (cons '(:g "d") :not-a-list)))
+    (eval '(deffeature audit-good-child
+            :purpose "p"
+            :belongs-to audit-bad-parent
+            :failure-modes ((:fm1 "d" :violates :nowhere))))
+    (finishes (check-intent-references))))

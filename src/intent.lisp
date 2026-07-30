@@ -37,6 +37,17 @@
 ;;; clobber these with nothing but a warning — silently breaking the audit, which
 ;;; is precisely the failure this library exists to prevent.
 
+(defun intent-entry-list (value)
+  "VALUE as a proper list of entries, with a second value saying whether it was
+   one. A dotted or circular VALUE yields (values NIL NIL).
+
+   The accessors below are total for a single entry, but every consumer walks the
+   list holding them, and MAKE-INTENT will store any cons at all in a slot
+   declared LIST. Guarding one level and not the other buys nothing."
+  (if (ignore-errors (list-length value))
+      (values value t)
+      (values nil nil)))
+
 (defun intent-entry-id (entry)
   "The id of an intent entry, e.g. :FM1 from (:fm1 \"desc\" :violates :g1)."
   (when (consp entry)

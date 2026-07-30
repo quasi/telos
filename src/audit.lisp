@@ -42,11 +42,12 @@
   "Goal ids INTENT may refer to: its own, plus those of every ancestor feature.
    A member's failure mode usually violates a goal declared on its feature — that
    is the documented pattern, not an exception."
-  (let ((ids (mapcar #'intent-entry-id (intent-goals intent))))
+  (let ((ids (mapcar #'intent-entry-id (intent-entry-list (intent-goals intent)))))
     (dolist (feature (ancestor-features (intent-belongs-to intent)) ids)
       (let ((feature-intent (feature-intent feature)))
         (when feature-intent
-          (setf ids (append ids (mapcar #'intent-entry-id (intent-goals feature-intent)))))))))
+          (setf ids (append ids (mapcar #'intent-entry-id
+                                        (intent-entry-list (intent-goals feature-intent))))))))))
 
 (defun intent-finding (severity code entity entity-type reference message)
   (list :severity severity
@@ -56,11 +57,25 @@
         :reference reference
         :message message))
 
+(defun malformed-field-finding (entity entity-type field)
+  (intent-finding
+   :error :malformed-field entity entity-type field
+   (format nil "The ~S of ~S is not a proper list of entries, so it could not be ~
+                audited. MAKE-INTENT does not validate; the declaration macros do."
+           field entity)))
+
 (defun check-one-intent (entity entity-type intent)
-  "Findings for a single INTENT: dangling :violates, undefined or cyclic parent."
+  "Findings for a single INTENT: dangling :violates, undefined or cyclic parent,
+   and any field whose value is not a list this can walk."
   (let ((findings nil)
         (parent (intent-belongs-to intent))
         (reachable (reachable-goal-ids intent)))
+    ;; A field that cannot be walked is reported, not skipped in silence and not
+    ;; allowed to signal: CHECK-INTENT-REFERENCES promises to do neither.
+    (multiple-value-bind (goals goals-ok) (intent-entry-list (intent-goals intent))
+      (declare (ignore goals))
+      (unless goals-ok
+        (push (malformed-field-finding entity entity-type :goals) findings)))
     (when (and parent (null (feature-intent parent)))
       (push (intent-finding
              :error :undefined-parent entity entity-type parent
@@ -72,15 +87,19 @@
              :error :cyclic-hierarchy entity entity-type parent
              (format nil "The :BELONGS-TO chain from ~S is cyclic." entity))
             findings))
-    (dolist (mode (intent-failure-modes intent))
-      (let ((violates (intent-entry-option mode :violates)))
-        (when (and violates (not (member violates reachable)))
-          (push (intent-finding
-                 :error :dangling-violates entity entity-type violates
-                 (format nil "Failure mode ~S of ~S violates ~S, which is not a goal ~
-                              of ~:*~*~S or of any feature it belongs to."
-                         (intent-entry-id mode) entity violates entity))
-                findings))))
+    (multiple-value-bind (modes modes-ok)
+        (intent-entry-list (intent-failure-modes intent))
+      (unless modes-ok
+        (push (malformed-field-finding entity entity-type :failure-modes) findings))
+      (dolist (mode modes)
+        (let ((violates (intent-entry-option mode :violates)))
+          (when (and violates (not (member violates reachable)))
+            (push (intent-finding
+                   :error :dangling-violates entity entity-type violates
+                   (format nil "Failure mode ~S of ~S violates ~S, which is not a goal ~
+                                of ~:*~*~S or of any feature it belongs to."
+                           (intent-entry-id mode) entity violates entity))
+                  findings)))))
     findings))
 
 (defun all-intents ()
@@ -124,6 +143,9 @@
                          or on any feature it belongs to
      :UNDEFINED-PARENT   :BELONGS-TO names a feature that was never defined
      :CYCLIC-HIERARCHY   the :BELONGS-TO chain loops
+     :MALFORMED-FIELD    a field's value is not a list of entries this can walk;
+                         :REFERENCE names the field. MAKE-INTENT does not
+                         validate, so a dotted or circular value can reach here
 
    Never signals: run it whenever you like, including mid-load, where a dangling
    reference means only that the rest has not been loaded yet. Use
