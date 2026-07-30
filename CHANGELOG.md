@@ -22,18 +22,26 @@ so a declaration carrying the field a reader most wants — what to *do* about t
 rejected outright. The entry was stored verbatim all along; what was missing was permission to
 write it and a way to read it back.
 
-#### Entry accessors — `entry-id`, `entry-description`, `entry-option`
+#### Entry accessors — `intent-entry-id`, `intent-entry-description`, `intent-entry-option`
 
 Entries are literal lists of the shape `(:id)` or `(:id "description" . options)`. Consumers
 had to know that shape and walk it. They no longer do:
 
 ```lisp
-(entry-option mode :mitigation)   ; => "Check expires-at before executing"
+(intent-entry-option mode :mitigation)   ; => "Check expires-at before executing"
 ```
 
-All three are read-side and total: a non-entry has no id, description, or options rather than
-signalling. `check-intent-references` now reads `:violates` through `entry-option` instead of
+All three are read-side and total: a non-entry — `nil`, a bare keyword, a dotted or
+odd-length option tail — has no id, description, or options rather than signalling the way a
+bare `getf` would. `make-intent` is exported and validates nothing, and
+`check-intent-references` sweeps the whole image, so one malformed entry must not take the
+audit down with it. That audit now reads `:violates` through `intent-entry-option` instead of
 its own private accessor.
+
+The `intent-entry-` prefix is deliberate rather than verbose: `entry-id` and
+`entry-description` are exactly what `(defstruct entry id description ...)` generates, and a
+downstream package that `:use`s Telos would have clobbered them with nothing but a warning —
+silently breaking the audit, which is the failure mode this library exists to prevent.
 
 #### `define-entry-option` — extend the vocabulary without a release
 
@@ -45,9 +53,15 @@ thought of:
 ```
 
 Strictness is unchanged and deliberately so: an unrecognized key is still an error, so a typo
-in your own vocabulary is caught like any other. Extending is an explicit act, not a silent
-widening. Declarations are validated at macroexpansion time, so this must be compiled before
-the declarations that use it.
+in your own vocabulary is caught like any other — as is a typo in the *field*, with or without
+keys after it. Extending is an explicit act, not a silent widening. Declarations are validated
+at macroexpansion time, so this must be compiled before the declarations that use it; the
+`eval-when` carries it into a fasl and into the rest of its own file. Returns `keys`.
+
+Two limits worth knowing: a forced reload of Telos resets the table to the built-in
+vocabulary, and neither the macro nor `add-entry-option` takes a lock. Both say the same
+thing — extend at load time, from one thread, in a file that loads before the declarations it
+affects.
 
 ### Changed
 

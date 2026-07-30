@@ -82,19 +82,26 @@ the shape `(:id)` or `(:id "description" . options)`. These read that shape so y
 to know it.
 
 ```lisp
-(entry-id entry)          → keyword or nil
-(entry-description entry) → string or nil     ; nil for the bare (:id) shape
-(entry-option entry key)  → value or nil      ; e.g. :violates, :mitigation
+(intent-entry-id entry)          → keyword or nil
+(intent-entry-description entry) → string or nil     ; nil for the bare (:id) shape
+(intent-entry-option entry key)  → value or nil      ; e.g. :violates, :mitigation
 ```
 
-All three are read-side and total: something that is not an entry simply has no id,
-description, or options, rather than signalling.
+All three are read-side and total. Something that is not an entry — `nil`, a bare keyword, a
+dotted or odd-length option tail — simply has no id, description, or options; none of them
+signals the way a bare `getf` would. That matters because `make-intent` is exported and
+validates nothing, and because `check-intent-references` sweeps every intent in the image,
+where one malformed entry must not take the whole audit down.
+
+The `intent-entry-` prefix is deliberate: `(defstruct entry id description ...)` is an
+ordinary thing for a downstream project to write, and under the shorter names it would clobber
+these with nothing but a warning.
 
 ```lisp
 (let ((mode (first (intent-failure-modes (feature-intent 'recovery-api)))))
-  (list (entry-id mode)
-        (entry-description mode)
-        (entry-option mode :mitigation)))
+  (list (intent-entry-id mode)
+        (intent-entry-description mode)
+        (intent-entry-option mode :mitigation)))
 ;; => (:STALE-RESPONSE "A response arrives after the option has expired"
 ;;     "%execute-recovery-response checks expires-at")
 ```
@@ -126,7 +133,7 @@ description, or options, rather than signalling.
   declared either here or on any ancestor feature. It is not resolved at macroexpansion time:
   the ancestor may not be defined yet, and a member legitimately violates a goal declared on
   its parent feature. `:mitigation` describes how to recover from the failure; read it with
-  `entry-option`. Both are optional and independent.
+  `intent-entry-option`. Both are optional and independent.
 - `verification` — List of `(:id "description")` for verification methods
 - `belongs-to` — Parent feature symbol (optional, creates hierarchy)
 - `decisions` — List of decision plists inline: `:id` (keyword), `:chose` (string), `:over`
@@ -539,17 +546,27 @@ Telos never thought of without waiting for a Telos release.
                    :detected-by "row-count check")))
 ```
 
-Read the values back with `entry-option`.
+Read the values back with `intent-entry-option`.
+
+**Returns**: `keys`.
 
 **Timing**: declarations are validated as they are macroexpanded, so this takes effect for
 everything compiled *after* it. Put it in a file that loads before the declarations that use
-it — the macro wraps itself in `eval-when` so it also applies to the rest of its own file.
+it — the macro wraps itself in `eval-when`, so it also applies to the rest of its own file and
+survives into a fasl compiled against it.
+
+**Reloading**: the table is a `defparameter`, so `(asdf:load-system :telos :force t)` resets
+it to the built-in vocabulary and your extensions are gone until the file declaring them is
+reloaded too. This bites in the interactive loop, not in a fresh image, where load order does
+the right thing on its own.
 
 **Note**: extending is deliberate, and strictness is unchanged. An unknown key is still an
-error, so a typo in your own vocabulary is caught exactly like a typo in Telos's.
-`add-entry-option` is the function underneath, for when the field and key are computed.
+error, so a typo in your own vocabulary is caught exactly like a typo in Telos's. A typo in
+the *field* is caught too, even with no keys after it. `add-entry-option` is the function
+underneath, for when the field and key are computed; neither it nor the macro takes a lock, so
+extend at load time rather than from several threads of a running system.
 
-**See Also**: `entry-option`, `invalid-intent-declaration`
+**See Also**: `intent-entry-option`, `invalid-intent-declaration`
 
 ---
 
