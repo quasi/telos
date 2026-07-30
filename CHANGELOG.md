@@ -31,9 +31,15 @@ had to know that shape and walk it. They no longer do:
 (intent-entry-option mode :mitigation)   ; => "Check expires-at before executing"
 ```
 
-All three are read-side and total: a non-entry — `nil`, a bare keyword, a dotted, circular, or
+They are structural, not schematic: they report what the entry holds, not what it ought to.
+Ids are keywords and descriptions are strings by convention, but the macros do not enforce
+that and these accessors do not pretend otherwise.
+
+All are read-side and total: a non-entry — `nil`, a bare keyword, a dotted, circular, or
 odd-length option tail — has no id, description, or options rather than signalling the way a
-bare `getf` would, or looping the way a naive proper-list check would.
+bare `getf` would, or looping the way a naive proper-list check would. `intent-entry-list`
+extends the guarantee to the collection, returning a second value that says whether the field
+could be walked at all, so a caller can report an unwalkable field instead of dying on it.
 `make-intent` is exported and validates nothing, and
 `check-intent-references` sweeps the whole image, so one malformed entry must not take the
 audit down with it. That audit now reads `:violates` through `intent-entry-option` instead of
@@ -66,6 +72,11 @@ affects.
 
 ### Changed
 
+- `check-intent-references` gained a fourth code, `:malformed-field`, whose `:reference` names
+  the field. It documents that it never signals, but it walked `:goals` and `:failure-modes`
+  with `mapcar` and `dolist` — and `make-intent` will store a dotted or circular cons in a slot
+  declared `list`. A field the audit cannot walk is now a finding rather than a `type-error`
+  or, worse, a hang. The rest of that entity's fields are still audited.
 - `invalid-intent-declaration-reason` gained `:unknown-entry-field` and `:invalid-option-key`,
   both from `define-entry-option` — a field that takes no entry options, and a non-keyword
   option key.
