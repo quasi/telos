@@ -1,7 +1,7 @@
 ---
 name: telos-dev
 description: Development guide for working on the telos intent introspection library
-version: 1.1.0
+version: 1.2.0
 author: quasiLabs
 type: dev
 ---
@@ -58,14 +58,15 @@ Intent introspection for Common Lisp. Captures the *why* behind code and makes i
 
 | Entity | Storage |
 |--------|---------|
-| Features | `*feature-registry*` hash table |
-| Function intent | Symbol plist: `(get 'fn-name 'telos:intent)` |
-| Struct intent | Symbol plist: `(get 'struct-name 'telos:intent)` |
-| Condition intent | Symbol plist: `(get 'condition-name 'telos:intent)` |
+| Features | `*feature-registry*` hash table, keyed on the feature name |
+| Function / struct / condition intent | `*entity-intent-registry*` hash table, keyed on `(kind name)`, via `register-entity-intent` / `entity-intent` |
 | Class intent (defclass/i) | Metaclass slot via `class-intent` accessor |
 | Class intent (retrofitted) | `*class-intent-registry*` hash table |
-| Method intent | `*method-intent-registry*` hash table |
-| Feature members | `*feature-members*` hash table |
+| Method intent | `*method-intent-registry*` hash table, keyed on `(name specializers)` |
+| Decisions | `*decision-registry*` hash table, feature name → list of `decision` structs |
+| Feature members | `*feature-members*` hash table (candidate index — see below) |
+
+All live in `src/storage.lisp`. Nothing is stored on a symbol plist.
 
 ### Module Load Order
 
@@ -84,6 +85,7 @@ package → validation → intent → storage → decision → feature → funct
 | `define-condition/i` | Define a condition with embedded intent |
 | `defintent` | Retrofit intent onto existing definitions |
 | `record-decision` | Record a design decision for a feature |
+| `define-entry-option` | Widen a field's entry-option vocabulary at compile time |
 
 All definition macros validate what they were given at macroexpansion time, via
 `src/validation.lisp`, signalling `invalid-intent-declaration` rather than dropping anything:
@@ -111,6 +113,23 @@ If you add a nested field, add it to `*intent-entry-option-keys*` — an unliste
 validated at all. If you add a clause, add it to both the parser's `case` and
 `*intent-clause-keys*` (the latter only feeds the error message).
 
+### Extending the entry vocabulary
+
+`define-entry-option` wraps `add-entry-options` in an `eval-when` (so it carries into a fasl and
+into the rest of its own file) and returns `keys`. Rules that hold in the implementation:
+
+- `*intent-entry-option-keys*` is built with `list`, not quoted — `add-entry-option` mutates
+  those cells, and destructively modifying literal source data is undefined.
+- New keys are **appended**, so built-ins stay first and "expected one of …" reads the same
+  everywhere.
+- `add-entry-options` checks every key before installing any: a form rejected halfway must not
+  leave the vocabulary half-widened. The field is checked even when `keys` is empty.
+- Two error reasons come from here: `:unknown-entry-field` (typo'd field) and
+  `:invalid-option-key` (non-keyword key).
+- Not thread-safe and not locked, by design; a forced reload of Telos resets the table to the
+  built-in vocabulary. Both facts say the same thing — extend at load time, from one thread, in
+  a file that loads before the declarations it affects.
+
 ## Query API
 
 | Function | Purpose |
@@ -118,16 +137,37 @@ validated at all. If you add a clause, add it to both the parser's `case` and
 | `intent-chain` | Trace from function/class up to root feature |
 | `feature-members` | Get all code belonging to a feature |
 | `get-intent` | Get intent for function, class, or method |
+| `method-intent` | Intent for one method specialization |
 | `feature-intent` | Get intent for a feature |
 | `intent-feature` | Quick lookup: which feature owns this? |
 | `class-intent` | Get intent for a class |
+| `feature-parent` / `feature-children` | Walk the feature tree one step |
+| `list-features` | Every feature in the image |
 | `feature-decisions` | Get decisions for a feature |
-| `check-intent-references` | Audit the graph: dangling `:violates`, undefined or cyclic parent |
+| `check-intent-references` | Audit the graph: `:dangling-violates`, `:undefined-parent`, `:cyclic-hierarchy`, `:malformed-field` |
 | `assert-intent-references` | Same, but signals `intent-reference-error` |
 | `all-intentful-classes` | Enumerate `defclass/i` classes (metaclass-recorded, re-derived on read) |
 | `list-decisions` | All decisions across features |
 | `intent-entry-id` / `intent-entry-description` / `intent-entry-option` | Read one entry of `:goals`, `:failure-modes`, … |
+| `intent-entry-list` | The field as a proper list, plus a second value: was it walkable? |
 | `define-entry-option` | Widen the keyword options a field accepts |
+
+### The read side is total, and must stay that way
+
+`make-intent` is exported and validates nothing, so anything reaching the accessors may be
+malformed. `intent-entry-*` therefore return `nil` rather than signalling, and use `list-length`
+rather than `proper-list-p` — the latter spins forever on a circular tail. The validator may
+assume declarations come from source and cannot be circular; the read side may not. A wedged
+audit is worse than a failed one.
+
+`check-intent-references` sweeps the whole image and never signals, so one malformed field is a
+`:malformed-field` finding (its `:reference` names the field) and the entity's other fields are
+still audited. It reads `:violates` through `intent-entry-option`, not a private accessor —
+keep it that way.
+
+The `intent-entry-` prefix is load-bearing, not verbose: `entry-id` and `entry-description` are
+exactly what `(defstruct entry id description …)` generates, and a downstream package that
+`:use`s Telos would have clobbered them with only a warning.
 
 ## Conventions
 
@@ -184,3 +224,11 @@ Human docs in `docs/` (not agent docs):
 - `docs/explanation.md` — design rationale
 - `docs/reference.md` — complete API reference
 - `docs/use-cases.md` — real-world scenarios
+- `docs/plans/` — implementation plans for in-flight work
+- `CHANGELOG.md` — the reasoning behind each release, not just the diff; write the *why* there
+- `examples/csv-validator.lisp` — a worked example, including a member that legitimately
+  violates a goal declared on its parent
+
+Both shipped skills (`.claude/skills/dev`, `.claude/skills/integration`) are part of the
+release: a behaviour change that reaches users updates the skill in the same commit, and their
+`version:` tracks the system version in `telos.asd`.

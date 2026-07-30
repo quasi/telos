@@ -1,7 +1,7 @@
 ---
 name: telos-integration
 description: How to use telos intent introspection in your Common Lisp project
-version: 1.1.0
+version: 1.2.0
 author: quasiLabs
 type: integration
 ---
@@ -88,6 +88,21 @@ the entry shape, so you never walk the list yourself:
 (intent-entry-option mode :mitigation)   ; => "how to recover"
 ```
 
+All four accessors are read-side and total. A non-entry — `nil`, a bare keyword, a dotted,
+circular or odd-length option tail — has no id, description, or options, rather than signalling
+the way `getf` would or looping the way a naive proper-list check would. Walk the *collection*
+through `intent-entry-list`, whose second value says whether the field could be walked at all,
+so an unwalkable field is something you report instead of dying on:
+
+```lisp
+(multiple-value-bind (entries walkable) (intent-entry-list (intent-failure-modes i))
+  (if walkable (mapcar #'intent-entry-id entries) (warn "unwalkable :failure-modes")))
+```
+
+They report what the entry holds, not what it ought to: ids are keywords and descriptions
+strings by convention, but `make-intent` is exported and validates nothing, so the accessors do
+not pretend otherwise.
+
 If your project needs an option Telos does not have, add it rather than working around the
 validator. Extending is explicit, and strictness is unchanged — a typo in your own vocabulary
 is still an error:
@@ -96,7 +111,18 @@ is still an error:
 (define-entry-option :failure-modes :detected-by :severity)
 ```
 
-It must be compiled before the declarations that use it.
+Three things to know:
+
+- Validation happens at macroexpansion time, so this must be **compiled before** the
+  declarations that use it — put it in a file that loads first. Returns `keys`.
+- A **forced reload of Telos resets** the table to the built-in vocabulary; reload the file
+  holding your extensions too.
+- Neither the macro nor the underlying `add-entry-option` / `add-entry-options` takes a lock —
+  extend at load time, from one thread, not in a running system.
+
+A typo'd *field* is an error too (`:unknown-entry-field`), with or without keys after it, as is
+a non-keyword option key (`:invalid-option-key`). `add-entry-options` is all-or-nothing: every
+key is checked before any is installed.
 
 Also rejected, for the same reason: a key given twice, a dangling key, a clause carrying two
 values (`(:goals (...) (...))` — the second would be dropped), and a field value that looks
@@ -113,12 +139,19 @@ A decision's rationale goes in `:because`. Constraints live at feature level
 | Function | Purpose |
 |----------|---------|
 | `get-intent` | Get intent for any symbol |
+| `method-intent` | Intent for one method specialization |
 | `intent-chain` | Trace from symbol up to root feature |
 | `feature-members` | List all code belonging to a feature |
 | `feature-intent` | Full intent for a feature |
 | `intent-feature` | Quick lookup: which feature owns this? |
 | `feature-decisions` | Design decisions for a feature |
+| `list-features` / `list-decisions` | Everything in the image |
+| `feature-parent` / `feature-children` | Walk the feature tree one step |
+| `all-intentful-classes` | Every `defclass/i` class, including one with no `:feature` |
 | `check-intent-references` | Audit the intent graph for unresolved references |
+| `assert-intent-references` | Same, signalling `intent-reference-error` |
+| `intent-entry-list` / `-id` / `-description` / `-option` | Read entries without walking them |
+| `define-entry-option` | Widen the options a field accepts |
 
 ### Decision Tracking
 
@@ -138,17 +171,23 @@ defined in another file, so check the finished image:
 ```lisp
 (check-intent-references)
 ;; => nil when everything resolves, else findings with :code :dangling-violates,
-;;    :undefined-parent or :cyclic-hierarchy
+;;    :undefined-parent, :cyclic-hierarchy or :malformed-field
 
 (assert-intent-references)   ; signals intent-reference-error — one line for a test
 ```
+
+The codes are API. `:malformed-field` names, in `:reference`, a field the audit could not walk
+(a dotted or circular cons reached a slot via `make-intent`); the rest of that entity's fields
+are still audited, because one malformed entry must not take the whole sweep down. Findings are
+sorted, so a CI diff is stable despite hash-ordered registries, and `check-intent-references`
+never signals — a mid-load image legitimately shows dangling references.
 
 Worth a test in your suite: a renamed goal leaves failure modes pointing at nothing, and
 nothing else will tell you.
 
 ## MCP Tools
 
-When telos is loaded in a Lisp MCP session, Claude Code gets 5 tools:
+When telos is loaded in a Lisp MCP session, Claude Code gets 7 tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -157,6 +196,8 @@ When telos is loaded in a Lisp MCP session, Claude Code gets 5 tools:
 | `telos-get-intent` | Intent for a specific function, class, or condition |
 | `telos-intent-chain` | Trace intent from symbol up to root feature |
 | `telos-feature-members` | All code belonging to a feature |
+| `telos-feature-decisions` | Design decisions recorded for a feature |
+| `telos-list-decisions` | All decisions across all features |
 
 ## Common Patterns
 
