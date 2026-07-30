@@ -19,6 +19,32 @@
     (when (and class (typep class 'intentful-class))
       (slot-value class 'intent))))
 
+(defvar *intentful-class-names* (make-hash-table :test 'eq)
+  "Candidate index of class names defined with INTENTFUL-CLASS.
+
+   Never treated as truth: DEFCLASS/I stores intent on the class metaobject, so
+   nothing else in the image can enumerate those classes, but an index that is
+   only ever added to goes stale — the same disease that made FEATURE-MEMBERS
+   report an entity under a feature it had left. Readers re-derive through
+   FIND-CLASS, so a stale name simply drops out.")
+
+(defmethod shared-initialize :after ((class intentful-class) slot-names &rest initargs)
+  "Record the class name so the image can be swept for intentful classes."
+  (declare (ignore slot-names))
+  (let ((name (or (getf initargs :name) (class-name class))))
+    (when (symbolp name)
+      (setf (gethash name *intentful-class-names*) t))))
+
+(defun all-intentful-classes ()
+  "Names of classes currently defined with the INTENTFUL-CLASS metaclass.
+   Each candidate is re-derived through FIND-CLASS, so a class redefined with
+   another metaclass, or a name that never became a class, is dropped here rather
+   than reported as a phantom."
+  (loop for name being the hash-keys of *intentful-class-names*
+        for class = (find-class name nil)
+        when (and class (typep class 'intentful-class))
+          collect name))
+
 (defparameter *defclass-passthrough-options*
   '(:default-initargs :documentation :metaclass)
   "Standard DEFCLASS options DEFCLASS/I forwards untouched. :METACLASS gets its own

@@ -54,6 +54,13 @@
    #:intent-chain
    #:list-features
    #:list-decisions
+   #:all-intentful-classes
+
+   ;; Intent graph audit
+   #:check-intent-references
+   #:assert-intent-references
+   #:intent-reference-error
+   #:intent-reference-error-findings
 
    ;; Metaclass
    #:intentful-class

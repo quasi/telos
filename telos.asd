@@ -19,7 +19,8 @@
      (:file "class")
      (:file "struct")
      (:file "condition")
-     (:file "query"))))
+     (:file "query")
+     (:file "audit"))))
   :in-order-to ((test-op (test-op "telos/tests"))))
 
 (defsystem "telos/tests"
@@ -39,6 +40,7 @@
      (:file "method-test")
      (:file "query-test")
      (:file "decision-test")
-     (:file "validation-test"))))
+     (:file "validation-test")
+     (:file "audit-test"))))
   :perform (test-op (o s)
              (uiop:symbol-call :fiveam :run! :telos-tests)))

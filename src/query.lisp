@@ -57,6 +57,31 @@
                    (setf feature (intent-belongs-to feature-intent))))
         (nreverse chain)))))
 
+(defun member-intent (name type)
+  "Current intent for a registered member NAME of member-list TYPE, or nil."
+  (case type
+    (:functions (entity-intent :function name))
+    (:structs (entity-intent :struct name))
+    (:conditions (entity-intent :condition name))
+    (:methods (method-intent name))
+    (:classes (or (let ((class (find-class name nil)))
+                    (when (and class (typep class 'intentful-class))
+                      (class-intent class)))
+                  (gethash name *class-intent-registry*)))))
+
+(defun current-members (feature-name members type)
+  "Members of TYPE whose intent still says they belong to FEATURE-NAME.
+
+   REGISTER-MEMBER only ever pushes, so re-declaring an entity under a second
+   feature leaves it registered under the first as well. The registry is a
+   candidate index; the entity's own intent is the truth, and it is consulted
+   here rather than trying to un-register on redefinition — which could not see a
+   later DEFINTENT re-pointing the entity anyway."
+  (remove-if-not (lambda (name)
+                   (let ((intent (member-intent name type)))
+                     (and intent (eq feature-name (intent-belongs-to intent)))))
+                 (getf members type)))
+
 (defun feature-members (feature-name &optional type-filter)
   "Get members (functions, classes, structs, conditions, methods, sub-features) of a feature.
 
@@ -69,11 +94,11 @@
    - :methods: return just the method list (specializer specs)
    - :features: return just the sub-feature list"
   (let* ((members (gethash feature-name *feature-members*))
-         (functions (getf members :functions))
-         (classes (getf members :classes))
-         (structs (getf members :structs))
-         (conditions (getf members :conditions))
-         (methods (getf members :methods))
+         (functions (current-members feature-name members :functions))
+         (classes (current-members feature-name members :classes))
+         (structs (current-members feature-name members :structs))
+         (conditions (current-members feature-name members :conditions))
+         (methods (current-members feature-name members :methods))
          (sub-features (feature-children feature-name)))
     (case type-filter
       (:functions functions)
