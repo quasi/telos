@@ -1,7 +1,7 @@
 ---
 name: telos-dev
 description: Development guide for working on the telos intent introspection library
-version: 0.1.0
+version: 1.0.0
 author: quasiLabs
 type: dev
 ---
@@ -33,6 +33,7 @@ Intent introspection for Common Lisp. Captures the *why* behind code and makes i
 (5am:run! :method-tests)
 (5am:run! :query-tests)
 (5am:run! :decision-tests)
+(5am:run! :validation-tests)
 ```
 
 ## Architecture
@@ -68,7 +69,7 @@ Intent introspection for Common Lisp. Captures the *why* behind code and makes i
 ### Module Load Order
 
 ```
-package → intent → storage → decision → feature → function → class → struct → condition → query
+package → validation → intent → storage → decision → feature → function → class → struct → condition → query
 ```
 
 ## Key Macros
@@ -82,6 +83,21 @@ package → intent → storage → decision → feature → function → class �
 | `define-condition/i` | Define a condition with embedded intent |
 | `defintent` | Retrofit intent onto existing definitions |
 | `record-decision` | Record a design decision for a feature |
+
+All definition macros validate what they were given at macroexpansion time, via
+`src/validation.lisp`, signalling `invalid-intent-declaration` rather than dropping anything:
+
+| Layer | Checked by | Table to extend |
+|-------|-----------|-----------------|
+| Nested entries (goals, failure modes, …) | `validate-intent-fields` | `*intent-entry-option-keys*` |
+| Decision plists | `validate-decision-entries` | `*decision-keys*` |
+| Top-level clauses in `defun/i`, `defstruct/i`, `defclass/i`, `define-condition/i` | `invalid-intent-clause` from each parser's `case` `otherwise` | `*intent-clause-keys*` |
+| Forwarded `defclass` / `define-condition` options | `parse-class-intent-options` | `*defclass-passthrough-options*`, `*define-condition-passthrough-options*` |
+
+`deffeature` and `defintent` get top-level strictness free from their `&key` lambda lists.
+If you add a nested field, add it to `*intent-entry-option-keys*` — an unlisted field is not
+validated at all. If you add a clause, add it to both the parser's `case` and
+`*intent-clause-keys*` (the latter only feeds the error message).
 
 ## Query API
 
@@ -133,7 +149,7 @@ tests/
   package.lisp, intent-test.lisp, feature-test.lisp,
   function-test.lisp, class-test.lisp, struct-test.lisp,
   condition-test.lisp, method-test.lisp, query-test.lisp,
-  decision-test.lisp
+  decision-test.lisp, validation-test.lisp
 ```
 
 ## TDD Workflow

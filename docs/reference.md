@@ -28,6 +28,8 @@ Complete reference for all Telos functions, macros, and data structures.
 - [Metaclass](#metaclass)
   - [intentful-class](#intentful-class)
   - [class-intent](#class-intent)
+- [Conditions](#conditions)
+  - [invalid-intent-declaration](#invalid-intent-declaration)
 
 ---
 
@@ -104,7 +106,16 @@ Core data structure representing intent at any level (feature, function, class).
   :belongs-to security-features)
 ```
 
-**See Also**: `feature-intent`, `feature-parent`, `feature-children`
+**Errors**: Unknown top-level keywords are rejected by the macro's `&key` lambda list.
+Unknown keys *inside* the nested entries — goals, constraints, assumptions, failure modes,
+verification, decisions — signal `invalid-intent-declaration` at macroexpansion time, as do
+duplicate keys and malformed entry shapes. Goal, constraint, assumption and verification
+entries accept no keyword options; failure modes accept `:violates`; decisions accept `:id`,
+`:chose`, `:over`, `:because`, `:date`, `:decided-by`. Nothing you write into a declaration
+is silently discarded.
+
+**See Also**: `feature-intent`, `feature-parent`, `feature-children`,
+`invalid-intent-declaration`
 
 ---
 
@@ -163,7 +174,13 @@ Core data structure representing intent at any level (feature, function, class).
        (search "@" email)))
 ```
 
-**See Also**: `get-intent`, `intent-feature`, `defintent`
+**Errors**: An unrecognized clause — `(:purpsoe "...")`, `(:failure-mode ...)` — signals
+`invalid-intent-declaration` at macroexpansion time, as do unknown keys inside the nested
+entries. This matters more here than elsewhere: clauses are popped off the front of the body,
+so a swallowed clause used to take a body form with it and leave the function returning `nil`.
+A keyword-headed form is never a legal Common Lisp body form, so nothing valid is rejected.
+
+**See Also**: `get-intent`, `intent-feature`, `defintent`, `invalid-intent-declaration`
 
 ---
 
@@ -216,7 +233,12 @@ Core data structure representing intent at any level (feature, function, class).
   (:role "User account model"))
 ```
 
-**See Also**: `intentful-class`, `class-intent`, `get-intent`
+**Errors**: An option that is neither an intent clause nor a standard `defclass` option
+(`:documentation`, `:default-initargs`, `:metaclass`) signals `invalid-intent-declaration` at
+macroexpansion time, as do unknown keys inside the nested entries. `:metaclass` gets its own
+dedicated error, since `defclass/i` always uses `intentful-class`.
+
+**See Also**: `intentful-class`, `class-intent`, `get-intent`, `invalid-intent-declaration`
 
 ---
 
@@ -285,7 +307,12 @@ Core data structure representing intent at any level (feature, function, class).
   (:purpose "Rate limit state"))
 ```
 
-**See Also**: `get-intent`, `feature-members`
+**Errors**: A keyword-headed clause that is not a recognized intent clause signals
+`invalid-intent-declaration` at macroexpansion time, as do unknown keys inside the nested
+entries. Struct slots are never keyword-headed, so a keyword-headed clause is always intent —
+which is why a misspelled one used to vanish from both the intent and the slot list.
+
+**See Also**: `get-intent`, `feature-members`, `invalid-intent-declaration`
 
 ---
 
@@ -344,7 +371,12 @@ Core data structure representing intent at any level (feature, function, class).
 ;; => #S(INTENT :PURPOSE "Signal when request rate exceeds allowed limit" ...)
 ```
 
-**See Also**: `get-intent`, `feature-members`
+**Errors**: An option that is neither an intent clause nor a standard `define-condition`
+option (`:documentation`, `:default-initargs`, `:report`) signals
+`invalid-intent-declaration` at macroexpansion time, as do unknown keys inside the nested
+entries.
+
+**See Also**: `get-intent`, `feature-members`, `invalid-intent-declaration`
 
 ---
 
@@ -428,7 +460,11 @@ Core data structure representing intent at any level (feature, function, class).
 
 **Use Case**: Retrofit intent onto third-party code, CL built-ins, legacy functions, or specific method specializations you don't want to rewrite.
 
-**See Also**: `get-intent`, `method-intent`
+**Errors**: Unknown top-level keywords are rejected by the macro's `&key` lambda list;
+unknown keys inside the nested entries signal `invalid-intent-declaration` at macroexpansion
+time.
+
+**See Also**: `get-intent`, `method-intent`, `invalid-intent-declaration`
 
 ---
 
@@ -840,6 +876,69 @@ For plain symbols:
 ```
 
 **Note**: For most use cases, prefer `get-intent` which works with all entity types.
+
+---
+
+## Conditions
+
+### `invalid-intent-declaration`
+
+**Type**: Condition (subclass of `program-error`, hence of `error`)
+
+**Purpose**: Signalled at macroexpansion time when a nested plist in an intent declaration
+is malformed or carries a key the declaration does not understand. Every definition macro
+(`deffeature`, `defun/i`, `defclass/i`, `defstruct/i`, `define-condition/i`, `defintent`)
+validates its nested entries this way, so an unrecognized key is never silently dropped.
+
+**Readers**:
+
+| Reader | Value |
+|--------|-------|
+| `invalid-intent-declaration-context` | String describing the declaration, e.g. `"DEFFEATURE USER-AUTH"` |
+| `invalid-intent-declaration-field` | The field the bad entry came from, e.g. `:goals`, `:decisions` |
+| `invalid-intent-declaration-entry` | The offending entry, as written |
+| `invalid-intent-declaration-key` | The offending keyword (when `reason` is `:unknown-key` or `:non-keyword-key`) |
+| `invalid-intent-declaration-expected` | The keywords this kind of entry accepts |
+| `invalid-intent-declaration-reason` | `:unknown-key`, `:unknown-clause`, `:clause-arity`, `:duplicate-key`, `:non-keyword-key`, `:options-before-description`, `:odd-plist`, `:not-a-list`, `:field-not-a-list`, `:unevaluated-form` |
+
+**Accepted keys per field**:
+
+| Field | Entry shape | Keyword options |
+|-------|-------------|-----------------|
+| `goals`, `constraints`, `assumptions`, `verification` | `(:id "description")` | none |
+| `failure-modes` | `(:id "description" :violates :goal-id)` | `:violates` |
+| `decisions` | plist | `:id`, `:chose`, `:over`, `:because`, `:date`, `:decided-by` |
+
+**Entry shape**: `(:id)` or `(:id "description" . options)`. The description may be omitted,
+but a keyword in its place is rejected rather than guessed at — `(:f1 :violates :g1)` would
+read as an option here and as a description to any consumer taking `(second entry)`.
+
+**Also rejected**: a key given twice (the second value would be dropped by `getf`), a
+dangling key with no value, a dotted or non-list entry, a field value that is not a list of
+entries, a clause carrying more than one value (`(:goals (...) (...))` — the second list would
+be dropped), and a field value that looks like a form to evaluate (`:goals '((:g1 "d"))`) —
+field values are taken literally, never evaluated.
+
+**Example**:
+
+```lisp
+(deffeature probe
+  :purpose "Demonstrate strictness"
+  :failure-modes ((:fm1 "a failure" :cause "swallowed")))
+;; => In DEFFEATURE PROBE, :FAILURE-MODES entry (:FM1 "a failure" :CAUSE "swallowed"):
+;;    unknown keyword: :CAUSE; expected one of :VIOLATES
+
+(defun/i f (x)
+  (:purpose "p")
+  (:failure-mode ((:fm1 "typo in the clause name")))
+  x)
+;; => In DEFUN/I F, clause (:FAILURE-MODE ((:FM1 "typo in the clause name"))):
+;;    unknown intent clause: :FAILURE-MODE; expected one of :FEATURE, :ROLE, :PURPOSE,
+;;    :FAILURE-MODES, :GOALS, :CONSTRAINTS, :ASSUMPTIONS, :VERIFICATION
+```
+
+**Note**: Rationale for a decision goes in `:because`; constraints belong at feature level
+(`intent-constraints`), not on a decision.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: telos-integration
 description: How to use telos intent introspection in your Common Lisp project
-version: 0.1.0
+version: 1.0.0
 author: quasiLabs
 type: integration
 ---
@@ -62,6 +62,35 @@ High-level groupings with purpose, goals, constraints, failure modes. Hierarchie
 
 All accept `:feature`, `:role`, `:failure-modes`, and other intent clauses.
 
+### Declarations Are Strict
+
+Both the top-level keywords and the keys inside nested entries are checked at
+macroexpansion time. An unrecognized key signals `invalid-intent-declaration` — nothing you
+write into a declaration is silently dropped, because a declaration that quietly loses a
+field answers queries with a lie.
+
+| Field | Entry shape | Keyword options |
+|-------|-------------|-----------------|
+| `goals`, `constraints`, `assumptions`, `verification` | `(:id "description")` | none |
+| `failure-modes` | `(:id "description" :violates :goal-id)` | `:violates` |
+| `decisions` | plist | `:id`, `:chose`, `:over`, `:because`, `:date`, `:decided-by` |
+
+```lisp
+(deffeature probe :purpose "p" :failure-modes ((:fm1 "a failure" :cause "x")))
+;; => In DEFFEATURE PROBE, :FAILURE-MODES entry (:FM1 "a failure" :CAUSE "x"):
+;;    unknown keyword: :CAUSE; expected one of :VIOLATES
+```
+
+Also rejected, for the same reason: a key given twice, a dangling key, a clause carrying two
+values (`(:goals (...) (...))` — the second would be dropped), and a field value that looks
+like a form to evaluate (`:goals '((:g1 "d"))`) — field values are read literally, never
+evaluated. An entry may omit its description (`(:g1)`), but a keyword may not sit where the
+description belongs: `(:f1 :violates :g1)` reads as an option here and as a description to
+anything taking `(second entry)`, so write `(:f1 "description" :violates :g1)`.
+
+A decision's rationale goes in `:because`. Constraints live at feature level
+(`intent-constraints`), never on a decision.
+
 ### Query API
 
 | Function | Purpose |
@@ -79,7 +108,7 @@ All accept `:feature`, `:role`, `:failure-modes`, and other intent clauses.
 (record-decision 'user-authentication
   :id :session-store
   :chose "signed cookies"
-  :over ("server-side sessions" "JWT")
+  :over '("server-side sessions" "JWT")
   :because "Stateless, no shared storage needed")
 ```
 
@@ -108,6 +137,7 @@ When telos is loaded in a Lisp MCP session, Claude Code gets 5 tools:
 - **Feature hierarchy should mirror real architecture** — not organizational convenience
 - **Intent describes WHY, not WHAT** — code shows what; intent captures purpose and rationale
 - **Link failure modes to goals** — every failure mode should violate a specific goal via `:violates`
+- **Don't invent keys inside entries** — the macros reject unknown nested keys with `invalid-intent-declaration`; if a field seems missing, it probably belongs at feature level
 
 ## Deep Dives
 

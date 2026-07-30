@@ -122,7 +122,7 @@ Telos makes intent introspectable:
 (record-decision 'user-authentication
   :id :session-store
   :chose "signed cookies"
-  :over ("server-side sessions" "JWT")
+  :over '("server-side sessions" "JWT")
   :because "Stateless, no shared storage needed")
 
 ;; Query decisions
