@@ -1,0 +1,6 @@
+# The global excludes file ignores .claude/*, but the dev and integration
+# skills ship with this library — they are release artifacts, not local
+# scratch. Un-ignore the directory first: a file cannot be re-included while
+# a parent directory of it is still excluded.
+!.claude/skills/
+!.claude/skills/**
