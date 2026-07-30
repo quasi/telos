@@ -3,6 +3,60 @@
 All notable changes to telos. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-07-30
+
+### Added
+
+#### `:mitigation` on failure modes
+
+A failure mode may now say how to recover from it, not only which goal it breaks:
+
+```lisp
+:failure-modes ((:stale-response "A response arrives after the option expired"
+                 :violates :timely
+                 :mitigation "Check expires-at before executing"))
+```
+
+The vocabulary was too small, not the validator too strict: 1.0.0 accepted only `:violates`,
+so a declaration carrying the field a reader most wants — what to *do* about the failure — was
+rejected outright. The entry was stored verbatim all along; what was missing was permission to
+write it and a way to read it back.
+
+#### Entry accessors — `entry-id`, `entry-description`, `entry-option`
+
+Entries are literal lists of the shape `(:id)` or `(:id "description" . options)`. Consumers
+had to know that shape and walk it. They no longer do:
+
+```lisp
+(entry-option mode :mitigation)   ; => "Check expires-at before executing"
+```
+
+All three are read-side and total: a non-entry has no id, description, or options rather than
+signalling. `check-intent-references` now reads `:violates` through `entry-option` instead of
+its own private accessor.
+
+#### `define-entry-option` — extend the vocabulary without a release
+
+A project with its own conventions should not need a Telos release to name a field Telos never
+thought of:
+
+```lisp
+(define-entry-option :failure-modes :detected-by :severity)
+```
+
+Strictness is unchanged and deliberately so: an unrecognized key is still an error, so a typo
+in your own vocabulary is caught like any other. Extending is an explicit act, not a silent
+widening. Declarations are validated at macroexpansion time, so this must be compiled before
+the declarations that use it.
+
+### Changed
+
+- `invalid-intent-declaration-reason` gained `:unknown-entry-field` and `:invalid-option-key`,
+  both from `define-entry-option` — a field that takes no entry options, and a non-keyword
+  option key.
+- `*intent-entry-option-keys*` is now built with `list` rather than quoted, so
+  `add-entry-option` can push onto it without modifying literal source data.
+
 ## [1.1.0] — 2026-07-30
 
 ### Added

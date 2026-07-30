@@ -8,6 +8,7 @@ Complete reference for all Telos functions, macros, and data structures.
 
 - [Data Structures](#data-structures)
   - [intent](#intent-struct)
+  - [Entry accessors](#entry-accessors)
 - [Definition Macros](#definition-macros)
   - [deffeature](#deffeature)
   - [defun/i](#defuni)
@@ -15,6 +16,7 @@ Complete reference for all Telos functions, macros, and data structures.
   - [defstruct/i](#defstructi)
   - [define-condition/i](#define-conditioni)
   - [defintent](#defintent)
+  - [define-entry-option](#define-entry-option)
 - [Query API](#query-api)
   - [get-intent](#get-intent)
   - [method-intent](#method-intent)
@@ -73,6 +75,32 @@ Core data structure representing intent at any level (feature, function, class).
 
 ---
 
+### Entry accessors
+
+The entries inside `intent-goals`, `intent-failure-modes` and the rest are literal lists of
+the shape `(:id)` or `(:id "description" . options)`. These read that shape so you do not have
+to know it.
+
+```lisp
+(entry-id entry)          → keyword or nil
+(entry-description entry) → string or nil     ; nil for the bare (:id) shape
+(entry-option entry key)  → value or nil      ; e.g. :violates, :mitigation
+```
+
+All three are read-side and total: something that is not an entry simply has no id,
+description, or options, rather than signalling.
+
+```lisp
+(let ((mode (first (intent-failure-modes (feature-intent 'recovery-api)))))
+  (list (entry-id mode)
+        (entry-description mode)
+        (entry-option mode :mitigation)))
+;; => (:STALE-RESPONSE "A response arrives after the option has expired"
+;;     "%execute-recovery-response checks expires-at")
+```
+
+---
+
 ## Definition Macros
 
 ### `deffeature`
@@ -93,10 +121,12 @@ Core data structure representing intent at any level (feature, function, class).
 - `goals` — List of `(:id "description")` for success criteria
 - `constraints` — List of `(:id "description")` for boundaries
 - `assumptions` — List of `(:id "description")` for world assumptions
-- `failure-modes` — List of `(:id "description" :violates :goal-id)` for failure scenarios.
-  `:violates` names a **goal** id — goals only, not constraints — declared either here or on
-  any ancestor feature. It is not resolved at macroexpansion time: the ancestor may not be
-  defined yet, and a member legitimately violates a goal declared on its parent feature.
+- `failure-modes` — List of `(:id "description" :violates :goal-id :mitigation "how to recover")`
+  for failure scenarios. `:violates` names a **goal** id — goals only, not constraints —
+  declared either here or on any ancestor feature. It is not resolved at macroexpansion time:
+  the ancestor may not be defined yet, and a member legitimately violates a goal declared on
+  its parent feature. `:mitigation` describes how to recover from the failure; read it with
+  `entry-option`. Both are optional and independent.
 - `verification` — List of `(:id "description")` for verification methods
 - `belongs-to` — Parent feature symbol (optional, creates hierarchy)
 - `decisions` — List of decision plists inline: `:id` (keyword), `:chose` (string), `:over`
@@ -120,9 +150,10 @@ Core data structure representing intent at any level (feature, function, class).
 Unknown keys *inside* the nested entries — goals, constraints, assumptions, failure modes,
 verification, decisions — signal `invalid-intent-declaration` at macroexpansion time, as do
 duplicate keys and malformed entry shapes. Goal, constraint, assumption and verification
-entries accept no keyword options; failure modes accept `:violates`; decisions accept `:id`,
-`:chose`, `:over`, `:because`, `:date`, `:decided-by`. Nothing you write into a declaration
-is silently discarded.
+entries accept no keyword options; failure modes accept `:violates` and `:mitigation`;
+decisions accept `:id`, `:chose`, `:over`, `:because`, `:date`, `:decided-by`. Nothing you
+write into a declaration is silently discarded. Use `define-entry-option` to add a keyword
+option your own project needs.
 
 **See Also**: `feature-intent`, `feature-parent`, `feature-children`,
 `invalid-intent-declaration`
@@ -475,6 +506,50 @@ unknown keys inside the nested entries signal `invalid-intent-declaration` at ma
 time.
 
 **See Also**: `get-intent`, `method-intent`, `invalid-intent-declaration`
+
+---
+
+### `define-entry-option`
+
+**Signature**:
+
+```lisp
+(define-entry-option field &rest keys) → keys
+```
+
+**Purpose**: Widen the keyword options an intent field accepts, so a project can name a field
+Telos never thought of without waiting for a Telos release.
+
+**Parameters**:
+
+- `field` — One of `:goals`, `:constraints`, `:assumptions`, `:verification`,
+  `:failure-modes`. Anything else is an error: a key added to a field that does not exist
+  would never be consulted.
+- `keys` — Keywords to accept as entry options on that field.
+
+**Example**:
+
+```lisp
+(define-entry-option :failure-modes :detected-by :severity)
+
+(deffeature ingest
+  :purpose "Load the day's files"
+  :failure-modes ((:partial "Half the rows landed"
+                   :severity :high
+                   :detected-by "row-count check")))
+```
+
+Read the values back with `entry-option`.
+
+**Timing**: declarations are validated as they are macroexpanded, so this takes effect for
+everything compiled *after* it. Put it in a file that loads before the declarations that use
+it — the macro wraps itself in `eval-when` so it also applies to the rest of its own file.
+
+**Note**: extending is deliberate, and strictness is unchanged. An unknown key is still an
+error, so a typo in your own vocabulary is caught exactly like a typo in Telos's.
+`add-entry-option` is the function underneath, for when the field and key are computed.
+
+**See Also**: `entry-option`, `invalid-intent-declaration`
 
 ---
 
@@ -1017,15 +1092,17 @@ validates its nested entries this way, so an unrecognized key is never silently 
 | `invalid-intent-declaration-entry` | The offending entry, as written |
 | `invalid-intent-declaration-key` | The offending keyword (when `reason` is `:unknown-key` or `:non-keyword-key`) |
 | `invalid-intent-declaration-expected` | The keywords this kind of entry accepts |
-| `invalid-intent-declaration-reason` | `:unknown-key`, `:unknown-clause`, `:clause-arity`, `:duplicate-key`, `:non-keyword-key`, `:options-before-description`, `:odd-plist`, `:not-a-list`, `:field-not-a-list`, `:unevaluated-form` |
+| `invalid-intent-declaration-reason` | `:unknown-key`, `:unknown-clause`, `:clause-arity`, `:duplicate-key`, `:non-keyword-key`, `:options-before-description`, `:odd-plist`, `:not-a-list`, `:field-not-a-list`, `:unevaluated-form`, `:value-type`, `:duplicate-entry-id`, `:unknown-entry-field`, `:invalid-option-key` |
 
 **Accepted keys per field**:
 
 | Field | Entry shape | Keyword options |
 |-------|-------------|-----------------|
 | `goals`, `constraints`, `assumptions`, `verification` | `(:id "description")` | none |
-| `failure-modes` | `(:id "description" :violates :goal-id)` | `:violates` |
+| `failure-modes` | `(:id "description" :violates :goal-id :mitigation "...")` | `:violates`, `:mitigation` |
 | `decisions` | plist | `:id`, `:chose`, `:over`, `:because`, `:date`, `:decided-by` |
+
+Widen this table for your own project with [`define-entry-option`](#define-entry-option).
 
 **Entry shape**: `(:id)` or `(:id "description" . options)`. The description may be omitted,
 but a keyword in its place is rejected rather than guessed at — `(:f1 :violates :g1)` would
@@ -1058,7 +1135,7 @@ field values are taken literally, never evaluated.
   :purpose "Demonstrate strictness"
   :failure-modes ((:fm1 "a failure" :cause "swallowed")))
 ;; => In DEFFEATURE PROBE, :FAILURE-MODES entry (:FM1 "a failure" :CAUSE "swallowed"):
-;;    unknown keyword: :CAUSE; expected one of :VIOLATES
+;;    unknown keyword: :CAUSE; expected one of :VIOLATES, :MITIGATION
 
 (defun/i f (x)
   (:purpose "p")
