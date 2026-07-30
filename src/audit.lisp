@@ -42,11 +42,11 @@
   "Goal ids INTENT may refer to: its own, plus those of every ancestor feature.
    A member's failure mode usually violates a goal declared on its feature — that
    is the documented pattern, not an exception."
-  (let ((ids (mapcar #'entry-id (intent-goals intent))))
+  (let ((ids (mapcar #'intent-entry-id (intent-goals intent))))
     (dolist (feature (ancestor-features (intent-belongs-to intent)) ids)
       (let ((feature-intent (feature-intent feature)))
         (when feature-intent
-          (setf ids (append ids (mapcar #'entry-id (intent-goals feature-intent)))))))))
+          (setf ids (append ids (mapcar #'intent-entry-id (intent-goals feature-intent)))))))))
 
 (defun intent-finding (severity code entity entity-type reference message)
   (list :severity severity
@@ -73,13 +73,13 @@
              (format nil "The :BELONGS-TO chain from ~S is cyclic." entity))
             findings))
     (dolist (mode (intent-failure-modes intent))
-      (let ((violates (entry-option mode :violates)))
+      (let ((violates (intent-entry-option mode :violates)))
         (when (and violates (not (member violates reachable)))
           (push (intent-finding
                  :error :dangling-violates entity entity-type violates
                  (format nil "Failure mode ~S of ~S violates ~S, which is not a goal ~
                               of ~:*~*~S or of any feature it belongs to."
-                         (entry-id mode) entity violates entity))
+                         (intent-entry-id mode) entity violates entity))
                 findings))))
     findings))
 

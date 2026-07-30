@@ -81,11 +81,11 @@ field answers queries with a lie.
 ;;    unknown keyword: :CAUSE; expected one of :VIOLATES, :MITIGATION
 ```
 
-Read the options back with `entry-option`; `entry-id` and `entry-description` read the rest of
+Read the options back with `intent-entry-option`; `intent-entry-id` and `intent-entry-description` read the rest of
 the entry shape, so you never walk the list yourself:
 
 ```lisp
-(entry-option mode :mitigation)   ; => "how to recover"
+(intent-entry-option mode :mitigation)   ; => "how to recover"
 ```
 
 If your project needs an option Telos does not have, add it rather than working around the

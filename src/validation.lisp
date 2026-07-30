@@ -140,19 +140,35 @@ it can be grepped, handled, and escalated.")
    from it — the field to read when the reader is the one recovering. Extend this
    with DEFINE-ENTRY-OPTION rather than by pushing here.")
 
+(defun entry-option-cell (field)
+  "The (field . keys) cell for FIELD, or an error naming the fields that have one."
+  (or (assoc field *intent-entry-option-keys*)
+      (invalid-declaration :unknown-entry-field "DEFINE-ENTRY-OPTION" field field
+                           :key field
+                           :expected (mapcar #'car *intent-entry-option-keys*))))
+
 (defun add-entry-option (field key)
   "Teach FIELD to accept the entry option KEY. Use DEFINE-ENTRY-OPTION instead —
    validation happens at macroexpansion time, so the change has to be in effect
-   before the declarations that use it are compiled."
-  (let ((cell (assoc field *intent-entry-option-keys*)))
-    (unless cell
-      (invalid-declaration :unknown-entry-field "DEFINE-ENTRY-OPTION" field field
-                           :key field
-                           :expected (mapcar #'car *intent-entry-option-keys*)))
+   before the declarations that use it are compiled.
+
+   Not thread-safe, and not meant to be: this belongs in a file that loads before
+   the declarations it affects, not in a running system."
+  (let ((cell (entry-option-cell field)))
     (unless (keywordp key)
       (invalid-declaration :invalid-option-key "DEFINE-ENTRY-OPTION" field key :key key))
-    (pushnew key (cdr cell))
+    ;; Appended, not pushed: the built-in options stay first, so "expected one of
+    ;; ..." reads the same everywhere, with a project's additions last.
+    (unless (member key (cdr cell))
+      (setf (cdr cell) (append (cdr cell) (list key))))
     key))
+
+(defun add-entry-options (field keys)
+  "Add each of KEYS to FIELD, returning KEYS. FIELD is checked even when KEYS is
+   empty — a typo'd field name is a typo whether or not anything follows it."
+  (entry-option-cell field)
+  (dolist (key keys keys)
+    (add-entry-option field key)))
 
 (defmacro define-entry-option (field &rest keys)
   "Widen the vocabulary of intent FIELD to accept KEYS as entry options.
@@ -162,10 +178,12 @@ it can be grepped, handled, and escalated.")
    Declarations are validated as they are macroexpanded, so this takes effect for
    everything compiled after it — put it in a file that loads before the
    declarations that use it. Extending is deliberate on purpose: an unknown key is
-   still an error, so a typo in your own vocabulary is caught like any other."
+   still an error, so a typo in your own vocabulary is caught like any other.
+
+   Returns KEYS. A forced reload of Telos re-evaluates the table and resets it to
+   the built-in vocabulary, so reload the file holding your extensions too."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (dolist (key ',keys)
-       (add-entry-option ',field key))))
+     (add-entry-options ',field ',keys)))
 
 (defparameter *intent-clause-keys*
   '(:feature :role :purpose :failure-modes :goals :constraints :assumptions :verification)

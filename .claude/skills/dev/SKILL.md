@@ -126,7 +126,7 @@ validated at all. If you add a clause, add it to both the parser's `case` and
 | `assert-intent-references` | Same, but signals `intent-reference-error` |
 | `all-intentful-classes` | Enumerate `defclass/i` classes (metaclass-recorded, re-derived on read) |
 | `list-decisions` | All decisions across features |
-| `entry-id` / `entry-description` / `entry-option` | Read one entry of `:goals`, `:failure-modes`, … |
+| `intent-entry-id` / `intent-entry-description` / `intent-entry-option` | Read one entry of `:goals`, `:failure-modes`, … |
 | `define-entry-option` | Widen the keyword options a field accepts |
 
 ## Conventions
