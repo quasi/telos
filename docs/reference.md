@@ -88,8 +88,9 @@ to know it.
 ```
 
 All three are read-side and total. Something that is not an entry — `nil`, a bare keyword, a
-dotted or odd-length option tail — simply has no id, description, or options; none of them
-signals the way a bare `getf` would. That matters because `make-intent` is exported and
+dotted, circular, or odd-length option tail — simply has no id, description, or options; none
+of them signals the way a bare `getf` would, and none of them loops. That matters because
+`make-intent` is exported and
 validates nothing, and because `check-intent-references` sweeps every intent in the image,
 where one malformed entry must not take the whole audit down.
 
@@ -548,7 +549,7 @@ Telos never thought of without waiting for a Telos release.
 
 Read the values back with `intent-entry-option`.
 
-**Returns**: `keys`.
+**Returns**: `keys` — the literal list from the macroexpansion, so treat it as read-only.
 
 **Timing**: declarations are validated as they are macroexpanded, so this takes effect for
 everything compiled *after* it. Put it in a file that loads before the declarations that use
@@ -562,9 +563,10 @@ the right thing on its own.
 
 **Note**: extending is deliberate, and strictness is unchanged. An unknown key is still an
 error, so a typo in your own vocabulary is caught exactly like a typo in Telos's. A typo in
-the *field* is caught too, even with no keys after it. `add-entry-option` is the function
-underneath, for when the field and key are computed; neither it nor the macro takes a lock, so
-extend at load time rather than from several threads of a running system.
+the *field* is caught too, even with no keys after it. `add-entry-option` and
+`add-entry-options` are the functions underneath, for when the field and keys are computed;
+neither they nor the macro take a lock, so extend at load time rather than from several
+threads of a running system.
 
 **See Also**: `intent-entry-option`, `invalid-intent-declaration`
 

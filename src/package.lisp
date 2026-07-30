@@ -22,6 +22,7 @@
    ;; Declaration validation
    #:define-entry-option
    #:add-entry-option
+   #:add-entry-options
    #:invalid-intent-declaration
    #:invalid-intent-declaration-context
    #:invalid-intent-declaration-field

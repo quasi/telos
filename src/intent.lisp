@@ -49,8 +49,14 @@
 
 (defun intent-entry-option (entry key)
   "The value of entry option KEY, e.g. :VIOLATES or :MITIGATION, or NIL.
-   A malformed option tail — dotted, or an odd number of elements — has no
-   options rather than signalling the way GETF would."
-  (let ((options (and (consp entry) (consp (cdr entry)) (cddr entry))))
-    (when (and (proper-list-p options) (evenp (length options)))
+   A malformed option tail — dotted, circular, or an odd number of elements — has
+   no options rather than signalling or looping the way GETF would.
+
+   LIST-LENGTH, not PROPER-LIST-P: it returns NIL on a circular list instead of
+   spinning. The validator may assume declarations come from source and cannot be
+   circular; this may not, because MAKE-INTENT reaches here without validation.
+   A wedged audit is worse than a failed one."
+  (let* ((options (and (consp entry) (consp (cdr entry)) (cddr entry)))
+         (length (and options (ignore-errors (list-length options)))))
+    (when (and length (evenp length))
       (getf options key))))
