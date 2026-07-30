@@ -15,6 +15,12 @@
 (defvar *class-intent-registry* (make-hash-table :test 'eq)
   "Maps class-name (symbol) to intent struct. Used for retrofitted classes.")
 
+;;; Decision registry
+;;; Lives here rather than in decision.lisp because REPLACE-FEATURE-DECISIONS below
+;;; refers to it and storage.lisp is loaded first.
+(defvar *decision-registry* (make-hash-table :test 'eq)
+  "Maps feature-name (symbol) to list of decision structs, most recent first")
+
 ;;; Method intent registry (for method specializers)
 (defvar *method-intent-registry* (make-hash-table :test 'equal)
   "Maps method-spec (list) to intent struct. Key is (generic-name . specializers).")
