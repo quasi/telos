@@ -15,6 +15,7 @@
    #:intent-members
 
    ;; Intent entries
+   #:intent-entry-list
    #:intent-entry-id
    #:intent-entry-description
    #:intent-entry-option

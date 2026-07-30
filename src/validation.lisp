@@ -165,10 +165,17 @@ it can be grepped, handled, and escalated.")
 
 (defun add-entry-options (field keys)
   "Add each of KEYS to FIELD, returning KEYS. FIELD is checked even when KEYS is
-   empty — a typo'd field name is a typo whether or not anything follows it."
-  (entry-option-cell field)
-  (dolist (key keys keys)
-    (add-entry-option field key)))
+   empty — a typo'd field name is a typo whether or not anything follows it.
+
+   All or nothing: every key is checked before any is installed, so a form that
+   is rejected halfway does not leave the vocabulary half-widened."
+  (let ((cell (entry-option-cell field)))
+    (dolist (key keys)
+      (unless (keywordp key)
+        (invalid-declaration :invalid-option-key "DEFINE-ENTRY-OPTION" field key :key key)))
+    (dolist (key keys keys)
+      (unless (member key (cdr cell))
+        (setf (cdr cell) (append (cdr cell) (list key)))))))
 
 (defmacro define-entry-option (field &rest keys)
   "Widen the vocabulary of intent FIELD to accept KEYS as entry options.

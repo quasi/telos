@@ -82,17 +82,25 @@ the shape `(:id)` or `(:id "description" . options)`. These read that shape so y
 to know it.
 
 ```lisp
-(intent-entry-id entry)          → keyword or nil
-(intent-entry-description entry) → string or nil     ; nil for the bare (:id) shape
-(intent-entry-option entry key)  → value or nil      ; e.g. :violates, :mitigation
+(intent-entry-id entry)          → whatever is in the id position, or nil
+(intent-entry-description entry) → whatever is in the description position, or nil
+(intent-entry-option entry key)  → the option's value, or nil
+(intent-entry-list value)        → (values entries t), or (values nil nil)
 ```
 
-All three are read-side and total. Something that is not an entry — `nil`, a bare keyword, a
-dotted, circular, or odd-length option tail — simply has no id, description, or options; none
-of them signals the way a bare `getf` would, and none of them loops. That matters because
-`make-intent` is exported and
-validates nothing, and because `check-intent-references` sweeps every intent in the image,
-where one malformed entry must not take the whole audit down.
+These are **structural, not schematic**: they report what the entry holds, not what it ought
+to hold. Ids are keywords and descriptions are strings by convention, and that is how every
+example here writes them, but the declaration macros do not enforce it — `(:goals ((42 43)))`
+is accepted, and `intent-entry-id` will hand you `42`.
+
+All are read-side and total. Something that is not an entry — `nil`, a bare keyword, a dotted,
+circular, or odd-length option tail — simply has no id, description, or options; none of them
+signals the way a bare `getf` would, and none of them loops. `intent-entry-list` extends the
+same guarantee to the *collection*: a field value that cannot be walked yields no entries and
+a second value of `nil`, so a caller can report it rather than crash on it. That matters
+because `make-intent` is exported and validates nothing, and because
+`check-intent-references` sweeps every intent in the image, where one malformed entry — or one
+malformed field — must not take the whole audit down.
 
 The `intent-entry-` prefix is deliberate: `(defstruct entry id description ...)` is an
 ordinary thing for a downstream project to write, and under the shorter names it would clobber
@@ -1013,7 +1021,7 @@ result.
 | Key | Value |
 |-----|-------|
 | `:severity` | `:error` |
-| `:code` | `:dangling-violates`, `:undefined-parent`, or `:cyclic-hierarchy` |
+| `:code` | `:dangling-violates`, `:undefined-parent`, `:cyclic-hierarchy`, or `:malformed-field` |
 | `:entity` | The feature, function, class, struct, condition, or method spec |
 | `:entity-type` | `:feature`, `:function`, `:class`, `:struct`, `:condition`, `:method` |
 | `:reference` | The unresolved goal id or feature name |

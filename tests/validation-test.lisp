@@ -656,6 +656,15 @@
   (signals invalid-intent-declaration
     (eval '(define-entry-option :goals "owner"))))
 
+(test define-entry-option-installs-all-keys-or-none
+  "A multi-key form that fails halfway used to leave the earlier keys registered,
+   so a rejected declaration still changed the vocabulary."
+  (with-clean-vocabulary
+    (signals invalid-intent-declaration
+      (eval '(define-entry-option :goals :validation-atomic "bad")))
+    (signals-invalid
+     (deffeature probe-m11 :purpose "p" :goals ((:g1 "d" :validation-atomic "x"))))))
+
 (test add-entry-option-is-usable-directly
   "The function under the macro, for a computed field and key"
   (with-clean-vocabulary
