@@ -39,12 +39,17 @@
                     :purpose (intent-purpose intent)
                     :failure-modes (intent-failure-modes intent))
               chain)
-        ;; Walk up the feature hierarchy
-        (let ((feature (intent-belongs-to intent)))
-          (loop while feature
+        ;; Walk up the feature hierarchy. SEEN stops a cyclic :belongs-to —
+        ;; without it the loop pushes an entry per iteration and exhausts the
+        ;; heap. A cycle is a topology mistake to be reported by an audit, not a
+        ;; reason for a query to take the image down.
+        (let ((feature (intent-belongs-to intent))
+              (seen nil))
+          (loop while (and feature (not (member feature seen)))
                 for feature-intent = (feature-intent feature)
                 while feature-intent
-                do (push (list :type :feature
+                do (push feature seen)
+                   (push (list :type :feature
                                :name feature
                                :purpose (intent-purpose feature-intent)
                                :failure-modes (intent-failure-modes feature-intent))

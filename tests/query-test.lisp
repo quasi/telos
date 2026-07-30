@@ -113,3 +113,23 @@
     (is (listp classes-only))
     (is (member 'fm-mixed-class classes-only))
     (is (not (member 'fm-mixed-fn classes-only)))))
+
+;;; Cyclic :belongs-to must not take the image down with it
+
+(test intent-chain-survives-a-belongs-to-cycle
+  "A cycle used to exhaust the heap: intent-chain pushed an entry per iteration"
+  (deffeature cycle-feature-a :purpose "A" :belongs-to cycle-feature-b)
+  (deffeature cycle-feature-b :purpose "B" :belongs-to cycle-feature-a)
+  (defun/i cycle-test-fn () (:feature cycle-feature-a) (:purpose "In a cycle") nil)
+  (let ((chain (intent-chain 'cycle-test-fn)))
+    (is (listp chain))
+    ;; the function, plus each feature in the cycle exactly once
+    (is (= 3 (length chain)))
+    (is (equal '(cycle-test-fn cycle-feature-a cycle-feature-b)
+               (mapcar (lambda (entry) (getf entry :name)) chain)))))
+
+(test intent-chain-survives-a-self-parent
+  (deffeature self-parent-feature :purpose "Its own parent" :belongs-to self-parent-feature)
+  (defun/i self-parent-fn () (:feature self-parent-feature) (:purpose "p") nil)
+  (let ((chain (intent-chain 'self-parent-fn)))
+    (is (= 2 (length chain)))))
