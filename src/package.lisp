@@ -52,6 +52,21 @@
    #:record-decision
    #:feature-decisions
 
+   ;; Programmatic registration
+   ;;
+   ;; The macros above are the ordinary way to declare intent. These are for a
+   ;; caller that recorded annotations itself and replays them into telos at
+   ;; runtime — a library whose fasls must not depend on telos being loaded, for
+   ;; instance. Exported so such a caller need not reach for TELOS:: internals,
+   ;; which a :depends-on does not license: a rename there would break the caller
+   ;; at load time having warned it at compile time only.
+   #:register-feature
+   #:register-entity-intent
+   #:entity-intent
+   #:register-member
+   #:replace-feature-decisions
+   #:classify-symbol-intent-target
+
    ;; Query API
    #:get-intent
    #:method-intent

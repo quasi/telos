@@ -172,19 +172,17 @@
             (setf (gethash ',target *method-intent-registry*) ,intent-form)
             ,@(when feature `((register-member ',feature ',target :method)))
             ',target))
+        ;; REGISTER-ENTITY-INTENT knows about :class now, so both branches below
+        ;; are the same shape. They used to open-code the class registry twice.
         (:entity
          `(progn
-            ,(if (eq kind :class)
-                 `(setf (gethash ',target *class-intent-registry*) ,intent-form)
-                 `(register-entity-intent ,kind ',target ,intent-form))
+            (register-entity-intent ,kind ',target ,intent-form)
             ,@(when feature `((register-member ',feature ',target ,kind)))
             ',target))
         (:symbol
          (let ((resolved-kind (classify-symbol-intent-target target)))
            `(progn
-              ,(if (eq resolved-kind :class)
-                   `(setf (gethash ',target *class-intent-registry*) ,intent-form)
-                   `(register-entity-intent ,resolved-kind ',target ,intent-form))
+              (register-entity-intent ,resolved-kind ',target ,intent-form)
               ,@(when feature `((register-member ',feature ',target ,resolved-kind)))
               ',target)))))))
 
