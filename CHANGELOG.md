@@ -3,6 +3,41 @@
 All notable changes to telos. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+#### A public programmatic registration API
+
+`register-feature`, `register-entity-intent`, `entity-intent`, `register-member`,
+`replace-feature-decisions` and `classify-symbol-intent-target` are now exported.
+
+The macros remain the ordinary way to declare intent. These are for a caller that
+records annotations itself and replays them into telos at runtime — a library
+whose fasls must not depend on telos being loaded, for instance. Until now the
+only way to do that was to reach into `telos::` internals, which a `:depends-on`
+does not license: a rename here would break such a caller at load time, having
+warned it at compile time only.
+
+Note that `feature-members` treats the member registry as a *candidate index* and
+filters it by each entity's own intent. Registering a member is therefore not
+enough on its own — the entity's intent must also name the feature via
+`:belongs-to`, or the member is filtered out and the list reads back empty.
+
+### Changed
+
+#### `register-entity-intent` accepts `:class`
+
+Retrofitted classes live in `*class-intent-registry*` rather than the entity
+registry, because `get-intent` prefers a live `intentful-class`'s own intent over
+a recorded one. That split is telos's business, not its callers': registering
+class intent programmatically used to mean writing to that registry directly.
+`entity-intent` mirrors the same case, so the two stay symmetric.
+
+`defintent` open-coded the class registry in both its `:entity` and `:symbol`
+branches; both now go through `register-entity-intent`, and the duplication is
+gone. No behavioural change — the 378 pre-existing checks pass unaltered.
+
 ## [1.2.0] — 2026-07-30
 
 ### Added

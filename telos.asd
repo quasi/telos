@@ -40,6 +40,7 @@
      (:file "method-test")
      (:file "query-test")
      (:file "decision-test")
+     (:file "registration-test")
      (:file "validation-test")
      (:file "audit-test"))))
   :perform (test-op (o s)

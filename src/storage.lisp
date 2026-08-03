@@ -26,12 +26,22 @@
   "Maps method-spec (list) to intent struct. Key is (generic-name . specializers).")
 
 (defun register-entity-intent (kind name intent)
-  "Register KIND intent for NAME."
-  (setf (gethash (list kind name) *entity-intent-registry*) intent))
+  "Register KIND intent for NAME. KIND is :function, :struct, :condition or :class.
+
+   Retrofitted classes live in their own registry because GET-INTENT prefers a
+   live INTENTFUL-CLASS's own intent over a recorded one. That split is telos's
+   business, not its callers': before :class was handled here, registering class
+   intent programmatically meant reaching into *CLASS-INTENT-REGISTRY* directly."
+  (if (eq kind :class)
+      (setf (gethash name *class-intent-registry*) intent)
+      (setf (gethash (list kind name) *entity-intent-registry*) intent)))
 
 (defun entity-intent (kind name)
-  "Get KIND intent for NAME, or nil if not found."
-  (gethash (list kind name) *entity-intent-registry*))
+  "Get KIND intent for NAME, or nil if not found.
+   Mirrors REGISTER-ENTITY-INTENT, including its :class case."
+  (if (eq kind :class)
+      (gethash name *class-intent-registry*)
+      (gethash (list kind name) *entity-intent-registry*)))
 
 ;;; Feature storage
 (defun register-feature (name intent)
