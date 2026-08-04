@@ -22,6 +22,81 @@ Telos makes intent introspectable:
 - **LLM-assisted reasoning**: Give AI agents the context to reason about purpose, not just behavior
 - **Self-documenting code**: Intent lives with code, not in stale external docs
 
+## Telos in the Age of Agents
+
+Agents read code well. They infer purpose badly.
+
+An agent asked to "fix the rate limiter" can read every line, trace every caller, and still not know whether blocking that power user was the bug or the feature. So it guesses. It reconstructs intent from variable names and commit archaeology, burns context doing it, and lands on an answer that sounds right. Sometimes it is.
+
+The guessing has a second cost. Intent recovered by inference dies with the session. The next agent — after a context compaction, a model swap, a fresh checkout — starts the archaeology over. Intent written into the code survives all three.
+
+### Conditions and telos: recovery that knows what it protects
+
+Common Lisp's condition system already splits *detecting* a problem from *deciding* what to do about it. A function signals and offers restarts; a handler further up the stack, holding more context, picks one. The stack stays alive while the decision is made.
+
+That split is precisely the shape an agent needs. The agent belongs in the handler — not in the code that failed.
+
+But the condition system hands the handler only two things: a condition object and a list of restarts. `retry-file`, `continue-next-row`, `continue-next-field` — all three "work". Which one is *right* depends on what the system is trying to achieve, and that is exactly what the runtime does not carry.
+
+Telos supplies the missing half. Declare the condition with `define-condition/i`, attach it to its feature, and say which goal each failure mode violates:
+
+```lisp
+(deffeature rate-limiting
+  :purpose "Protect shared capacity without turning away legitimate users"
+  :goals ((:protect "No client can exhaust shared capacity")
+          (:allow-legitimate "Real users are never blocked")))
+
+(define-condition/i rate-limit-exceeded (error)
+  ((client :initarg :client :reader offending-client))
+  (:feature rate-limiting)
+  (:role "Report that a client crossed its quota, before deciding what to do about it")
+  (:failure-modes ((:false-positive "The blocked client is legitimate"
+                    :violates :allow-legitimate))))
+
+(defun/i admit-request (client)
+  "Admit a request, signalling when the client is over quota."
+  (:feature rate-limiting)
+  (:role "Enforce the quota at the entry point and leave recovery to the caller")
+  (restart-case (if (over-quota-p client)
+                    (error 'rate-limit-exceeded :client client)
+                    :admitted)
+    (deny () :report "Reject the request." :denied)
+    (admit-anyway () :report "Let this request through." :admitted)))
+```
+
+Now a handler can ask the condition what a wrong answer would cost:
+
+```lisp
+(defun agent-handler (condition)
+  (let* ((mode (first (intent-failure-modes (get-intent 'rate-limit-exceeded))))
+         (goal (intent-entry-option mode :violates)))
+    (when (and (eq goal :allow-legitimate)
+               (trusted-p (offending-client condition)))
+      (invoke-restart 'admit-anyway))))
+
+(handler-bind ((rate-limit-exceeded #'agent-handler))
+  (admit-request "batch-importer"))
+;; => :ADMITTED
+```
+
+The handler matched no error strings and hard-coded no policy. It read the failure mode the condition declares, learned which goal a false block would violate, and took the restart that preserves it. Rename the goal or retarget the `:violates` and the handler's reasoning follows — because the goal lives in the code, not in a prompt.
+
+### Metadata that stays honest
+
+Agent-readable metadata that drifts out of sync is worse than none: it teaches confident wrong answers. `check-intent-references` walks the whole intent graph and reports failure modes pointing at goals that no longer exist, `:belongs-to` naming a feature that was never defined, and loops in the hierarchy:
+
+```lisp
+(check-intent-references)
+;; => ((:SEVERITY :ERROR :CODE :DANGLING-VIOLATES :ENTITY TYPO-CONDITION
+;;      :ENTITY-TYPE :CONDITION :REFERENCE :ALLOW-LEGITMATE :MESSAGE
+;;      "Failure mode :OOPS of TYPO-CONDITION violates :ALLOW-LEGITMATE, which is
+;;       not a goal of TYPO-CONDITION or of any feature it belongs to."))
+```
+
+Wire `assert-intent-references` into your test suite and a stale goal reference fails the build.
+
+For a full worked example — a CSV validator with three levels of restarts and an agent-facing recovery API — see [examples/csv-validator.lisp](examples/csv-validator.lisp).
+
 ## Quickstart
 
 ### Requirements
@@ -212,6 +287,7 @@ This integration enables Claude to reason about **why** code exists, not just **
 - [Use Cases](docs/use-cases.md) — Real-world scenarios with examples
 - [API Reference](docs/reference.md) — Complete function and macro documentation
 - [Explanation](docs/explanation.md) — Design rationale and mental models
+- [Example: CSV validator](examples/csv-validator.lisp) — Conditions, restarts, and an agent-facing recovery API
 
 ## Requirements
 
